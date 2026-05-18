@@ -1,0 +1,42 @@
+{
+  "manifest_version": 3,
+  "name": "올려도댐? 개인정보 점검",
+  "description": "개인정보 점검 Chrome Extension 와이어프레임",
+  "version": "0.1.0",
+  "action": {
+    "default_title": "개인정보 점검"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "permissions": [
+    "sidePanel",
+    "activeTab",
+    "scripting",
+    "contextMenus",
+    "storage",
+    "clipboardWrite"
+  ],
+  "host_permissions": [
+    "https://*.instagram.com/*",
+    "https://*.x.com/*",
+    "https://*.twitter.com/*",
+    "https://*.facebook.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.instagram.com/*",
+        "https://*.x.com/*",
+        "https://*.twitter.com/*",
+        "https://*.facebook.com/*"
+      ],
+      "js": ["contentScript.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

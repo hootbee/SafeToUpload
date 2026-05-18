@@ -1,0 +1,31 @@
+# macOS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
+
+# Frontend (Vite + React)
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/.vite/
+frontend/*.local
+
+# Server (placeholder / future Nest.js)
+server/node_modules/
+server/dist/
+server/coverage/
+server/.nestjs-cli.json
+
+# Generic
+coverage/
+.tmp/
+tmp/
