@@ -22,6 +22,7 @@ const hasChromeRuntime = typeof chrome !== 'undefined' && !!chrome.runtime;
 type ViewMode = 'home' | 'analysis-running' | 'report' | 'rewrite' | 'image-masking';
 
 export function SidePanelApp() {
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
   const [tab, setTab] = useState<TabKey>('home');
   const [viewMode, setViewMode] = useState<ViewMode>('home');
   const [onboardingDone, setOnboardingDone] = useState(() => localStorage.getItem(ONBOARDING_KEY) === 'true');
@@ -51,6 +52,7 @@ export function SidePanelApp() {
 
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [healthStatus, setHealthStatus] = useState<string>('');
 
   const analysisTimerRef = useRef<number[]>([]);
 
@@ -175,6 +177,21 @@ export function SidePanelApp() {
     });
   };
 
+  const checkBackendHealth = async () => {
+    try {
+      setHealthStatus('연결 확인 중...');
+      const response = await fetch(`${apiBaseUrl}/health`);
+      if (!response.ok) {
+        setHealthStatus(`실패: HTTP ${response.status}`);
+        return;
+      }
+      const data = (await response.json()) as { status?: string; appMode?: string };
+      setHealthStatus(`성공: status=${data.status ?? 'unknown'}, mode=${data.appMode ?? 'unknown'}`);
+    } catch (error) {
+      setHealthStatus(`실패: ${(error as Error).message}`);
+    }
+  };
+
   if (!onboardingDone) {
     return (
       <div className="panel-root">
@@ -194,6 +211,11 @@ export function SidePanelApp() {
               <>
                 <section className="card">
                   <h2>A-01 홈 (Side Panel)</h2>
+                  <p className="muted">API Base URL: {apiBaseUrl}</p>
+                  <button className="btn" type="button" onClick={checkBackendHealth}>
+                    백엔드 연결 테스트 (/health)
+                  </button>
+                  {healthStatus && <p className="muted">{healthStatus}</p>}
                 </section>
                 <ModelStatusBanner
                   status={modelStatus}

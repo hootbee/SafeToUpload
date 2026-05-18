@@ -1,0 +1,51 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model AnalysisRecord {
+  id         String          @id @default(cuid())
+  sourceType String
+  platform   String
+  pageUrl    String?
+  pageDomain String?
+  inputText  String?
+  imagePath  String?
+  status     String
+  riskScore  Int?
+  riskLevel  String?
+  summary    String?
+  piiTypes   Json?
+  piiCount   Int?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  result     AnalysisResult?
+}
+
+model AnalysisResult {
+  id                String         @id @default(cuid())
+  analysisId        String         @unique
+  analysis          AnalysisRecord @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  piiItems          Json?
+  exifItems         Json?
+  imageRisks        Json?
+  contextResult     Json?
+  rewriteSuggestion String?
+  rawAiResponse     Json?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+}
+
+model UserSetting {
+  id                  String   @id @default(cuid())
+  targetPlatforms     Json
+  sensitivity         Int
+  retentionDays       Int
+  notificationEnabled Boolean
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}

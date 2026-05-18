@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: privacy_check_postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: privacy_check
+      POSTGRES_USER: privacy_user
+      POSTGRES_PASSWORD: privacy_password
+    volumes:
+      - privacy_check_pgdata:/var/lib/postgresql/data
+
+volumes:
+  privacy_check_pgdata:
