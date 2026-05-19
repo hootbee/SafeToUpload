@@ -172,17 +172,14 @@ input[type='range'] {
   appearance: none;
   -webkit-appearance: none;
   text-decoration: none;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .btn.primary:hover { 
-  background: linear-gradient(180deg, #3B82F6 0%, #2563EB 100%);
-  transform: translateY(-1px);
   box-shadow: 0 6px 14px rgba(29, 78, 216, 0.25);
 }
 
 .btn.primary:active {
-  transform: translateY(1px);
   box-shadow: 0 2px 4px rgba(29, 78, 216, 0.1);
 }
 
@@ -330,5 +327,20 @@ input[type='range'] {
 
 .tab-btn.active { 
   color: var(--color-primary);
+  font-weight: 600;
+}
+
+/* 플랫폼 버튼 스타일 */
+.fixed-grid-row {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px; 
+}
+
+.btn.platform-btn {
+  width: 100%;
+  text-align: center;
+  padding: 10px 0; 
+  font-size: 14px;
   font-weight: 600;
 }
