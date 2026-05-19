@@ -240,7 +240,7 @@ input[type='range'] {
 }
 
 .status-badge {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   padding: 4px 8px;
   border-radius: 12px;
@@ -343,4 +343,115 @@ input[type='range'] {
   padding: 10px 0; 
   font-size: 14px;
   font-weight: 600;
+}
+
+/* AgentProgress 컴포넌트 스타일 */
+h2 {
+  margin-top: 5px;
+  margin-bottom: 20px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.stage-card {
+  padding: 12px;
+  background: #f8fafc;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+}
+
+.log-box {
+  margin-top: 8px;
+  font-size: 14px;
+  color: #64748b;
+  max-height: 60px;
+  overflow-y: auto;
+}
+
+.log-text {
+  margin: 2px 0;
+}
+
+.status-badge.running {
+  color: var(--color-primary); 
+}
+
+.status-badge.done { 
+  color: #10b981; 
+}
+
+.agent-btn .btn {
+  padding: 12px;
+  border-radius: 20px;
+}
+
+/* 분석 취소 버튼 스타일 */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 20px;
+}
+
+.modal-box {
+  background: white;
+  padding: 28px;
+  border-radius: 24px;
+  width: 100%;
+  max-width: 320px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+  text-align: center;
+  animation: modal-pop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes modal-pop {
+  0% { transform: scale(0.9); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.modal-box h3 {
+  margin: 0;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.modal-box p {
+  margin-top: 20px;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+  font-size: 15px;
+  text-align: center;
+}
+
+.row-gap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.row-gap .btn {
+  width: 100%;
+  padding: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 20px;
+}
+
+.btn.danger {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+.btn.danger:hover {
+  background: #fecaca;
 }

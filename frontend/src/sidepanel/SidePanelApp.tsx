@@ -146,7 +146,7 @@ export function SidePanelApp() {
             },
             ...prev,
           ]);
-          setViewMode('report');
+          //setViewMode('report');
         }
       }, 700 * index + 500);
 
