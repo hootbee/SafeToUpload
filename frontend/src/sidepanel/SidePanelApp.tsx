@@ -33,7 +33,7 @@ export function SidePanelApp() {
 
   const [text, setText] = useState('');
   const [platform, setPlatform] = useState<Platform>('instagram');
-  const [imageName, setImageName] = useState<string | undefined>();
+  const [imageName] = useState<string | undefined>();
 
   const [history, setHistory] = useState(initialHistory);
   const [historyFilter, setHistoryFilter] = useState<'all' | 'low' | 'medium' | 'high'>('all');
@@ -51,6 +51,8 @@ export function SidePanelApp() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [healthStatus, setHealthStatus] = useState<string>('');
+
+  const [files, setFiles] = useState<File[]>([]);
 
   const analysisTimerRef = useRef<number[]>([]);
 
@@ -234,7 +236,7 @@ export function SidePanelApp() {
                 
                 <TextInputCard value={text} onChange={setText} />
                 <PlatformSelector value={platform} onChange={setPlatform} />
-                <ImageUploadBox imageName={imageName} onPick={setImageName} />
+                <ImageUploadBox files={files} onFilesChange={setFiles} />
                 
                 <button 
                   className="btn primary" 
