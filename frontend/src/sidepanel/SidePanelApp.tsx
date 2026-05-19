@@ -37,14 +37,12 @@ export function SidePanelApp() {
 
   const [history, setHistory] = useState(initialHistory);
   const [historyFilter, setHistoryFilter] = useState<'all' | 'low' | 'medium' | 'high'>('all');
-
   const [settings, setSettings] = useState<SettingsState>({
     platforms: { instagram: true, x: true, facebook: true, other: false },
     sensitivity: 6,
     retentionDays: 30,
     notifications: true,
   });
-
   const [stages, setStages] = useState(createInitialStages());
   const [currentStageTitle, setCurrentStageTitle] = useState('대기');
   const [report, setReport] = useState<RiskReportData | null>(null);
@@ -195,28 +193,37 @@ export function SidePanelApp() {
   if (!onboardingDone) {
     return (
       <div className="panel-root">
-        <header className="panel-header">G-01 Onboarding</header>
-        <OnboardingPanel onStart={startOnboarding} />
+        <header className="panel-header">
+          <h1 className="logo-title">AI PRIVACY GUARD</h1>
+        </header>
+        <main className="panel-content">
+          <OnboardingPanel onStart={startOnboarding} />
+        </main>
       </div>
     );
   }
 
   return (
     <div className="panel-root">
-      <header className="panel-header">개인정보 점검 Side Panel Wireframe</header>
+      <header className="panel-header">
+        <h1 className="logo-title">AI PRIVACY GUARD</h1>
+      </header>
+      
       <main className="panel-content">
         {tab === 'home' && (
           <>
             {viewMode === 'home' && (
               <>
                 <section className="card">
-                  <h2>A-01 홈 (Side Panel)</h2>
-                  <p className="muted">API Base URL: {apiBaseUrl}</p>
-                  <button className="btn" type="button" onClick={checkBackendHealth}>
-                    백엔드 연결 테스트 (/health)
-                  </button>
-                  {healthStatus && <p className="muted">{healthStatus}</p>}
+                  <div className="flex-between">
+                    <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700 }}>시스템 연결 상태</h3>
+                    <button className="btn-text" type="button" onClick={checkBackendHealth}>
+                      연결 테스트
+                    </button>
+                  </div>
+                  {healthStatus && <p className="muted" style={{ marginTop: '8px' }}>{healthStatus}</p>}
                 </section>
+                
                 <ModelStatusBanner
                   status={modelStatus}
                   progress={modelProgress}
@@ -224,14 +231,22 @@ export function SidePanelApp() {
                   onLoadModel={loadModel}
                   onRetry={loadModel}
                 />
+                
                 <TextInputCard value={text} onChange={setText} />
                 <PlatformSelector value={platform} onChange={setPlatform} />
                 <ImageUploadBox imageName={imageName} onPick={setImageName} />
-                <button className="btn primary" type="button" onClick={runAnalysis} disabled={modelStatus !== 'ready'}>
-                  분석 시작
+                
+                <button 
+                  className="btn primary" 
+                  type="button" 
+                  onClick={runAnalysis} 
+                  disabled={modelStatus !== 'ready'}
+                >
+                  개인정보 분석 시작
                 </button>
               </>
             )}
+
             {viewMode === 'analysis-running' && (
               <AgentProgress
                 stages={stages}
@@ -239,6 +254,7 @@ export function SidePanelApp() {
                 onRequestCancel={() => setShowCancelDialog(true)}
               />
             )}
+            
             {viewMode === 'report' && report && (
               <RiskReport
                 report={report}
@@ -247,6 +263,7 @@ export function SidePanelApp() {
                 onOpenImageMasking={() => setViewMode('image-masking')}
               />
             )}
+            
             {viewMode === 'rewrite' && report && <RewriteSuggestion report={report} />}
             {viewMode === 'image-masking' && report && <ImageMaskingPanel report={report} onToggleMask={toggleMask} />}
           </>
@@ -274,7 +291,7 @@ export function SidePanelApp() {
 
       {selectedRiskId && report && (
         <ConfirmDialog
-          title="E-01 위험 상세 보기"
+          title="위험 상세 보기"
           description={`${report.piiItems.find((r) => r.id === selectedRiskId)?.description} / 위치: ${report.piiItems.find((r) => r.id === selectedRiskId)?.location} / 정책: ${report.piiItems.find((r) => r.id === selectedRiskId)?.policyRef}`}
           confirmText="닫기"
           cancelText="닫기"
@@ -285,8 +302,8 @@ export function SidePanelApp() {
 
       {showDeleteDialog && (
         <ConfirmDialog
-          title="F-01 데이터 삭제 확인"
-          description="삭제 대상: 전체 분석 기록. 복구 불가합니다."
+          title="데이터 삭제 확인"
+          description="전체 분석 기록을 삭제하시겠습니까? 이 작업은 복구할 수 없습니다."
           confirmText="삭제 확인"
           cancelText="취소"
           onConfirm={clearHistory}
@@ -296,8 +313,8 @@ export function SidePanelApp() {
 
       {showCancelDialog && (
         <ConfirmDialog
-          title="F-02 분석 취소 확인"
-          description={`현재 단계: ${currentStageTitle}. 취소 시 결과가 저장되지 않습니다.`}
+          title="분석 취소 확인"
+          description={`현재 단계: ${currentStageTitle}. 취소 시 분석 결과가 저장되지 않습니다.`}
           confirmText="분석 취소"
           cancelText="계속 분석"
           onConfirm={cancelAnalysis}
