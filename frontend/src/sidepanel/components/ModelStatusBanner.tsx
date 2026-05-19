@@ -1,4 +1,5 @@
 import type { ModelStatus } from '../../shared/types';
+import { RiRobot2Line } from "react-icons/ri";
 
 interface Props {
   status: ModelStatus;
@@ -12,7 +13,10 @@ export function ModelStatusBanner({ status, progress, errorMessage, onLoadModel,
   return (
     <section className="card model-banner">
       <div className="model-banner-header">
-        <h3>AI 분석 모델 상태</h3>
+        <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <RiRobot2Line size={18} />
+          AI 분석 모델 상태
+        </h3>
         <span className={`status-badge ${status}`}>
           {status === 'not-loaded' && '대기중'}
           {status === 'loading' && '로딩중'}

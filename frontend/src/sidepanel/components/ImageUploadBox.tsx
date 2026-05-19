@@ -1,3 +1,5 @@
+import { LuImageUp } from "react-icons/lu";
+
 interface Props {
   imageName?: string;
   onPick: (name: string) => void;
@@ -6,7 +8,10 @@ interface Props {
 export function ImageUploadBox({ imageName, onPick }: Props) {
   return (
     <section className="card">
-      <h3>이미지 업로드</h3>
+      <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <LuImageUp size={18} />
+        이미지 업로드
+      </h3>
       <label className={`btn ${imageName ? 'selected' : ''}`}>
         <input
           type="file"
