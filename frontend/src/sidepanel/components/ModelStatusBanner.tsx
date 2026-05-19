@@ -24,9 +24,9 @@ export function ModelStatusBanner({ status, progress, errorMessage, onLoadModel,
       {status === 'not-loaded' && (
         <>
           <p className="muted">안전한 점검을 위해 AI 모델을 불러옵니다.</p>
-          <button type="button" className="btn" onClick={onLoadModel} style={{ alignSelf: 'flex-start' }}>
+          <label className="btn" onClick={onLoadModel} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             AI 모델 불러오기
-          </button>
+          </label>
         </>
       )}
 

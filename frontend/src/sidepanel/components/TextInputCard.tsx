@@ -6,7 +6,7 @@ interface Props {
 export function TextInputCard({ value, onChange }: Props) {
   return (
     <section className="card">
-      <h3>A-01 텍스트 입력</h3>
+      <h3>텍스트 입력</h3>
       <textarea
         className="text-area"
         rows={5}
