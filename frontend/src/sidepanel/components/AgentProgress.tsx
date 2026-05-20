@@ -1,4 +1,5 @@
 import type { AnalysisStage } from '../../shared/types';
+import { LuActivity } from "react-icons/lu";
 
 interface Props {
   stages: AnalysisStage[];
@@ -9,23 +10,34 @@ interface Props {
 export function AgentProgress({ stages, currentStageTitle, onRequestCancel }: Props) {
   return (
     <section className="card">
-      <h2>C-02 Agent 분석 중</h2>
-      <p className="muted">현재 단계: {currentStageTitle}</p>
-      {stages.map((stage) => (
-        <article key={stage.id} className="stage-card">
-          <p>
-            {stage.title} - {stage.status}
-          </p>
-          <div className="log-box">
-            {stage.logs.map((log, idx) => (
-              <p key={idx}>{log}</p>
-            ))}
-          </div>
-        </article>
-      ))}
-      <button className="btn" type="button" onClick={onRequestCancel}>
-        분석 취소
-      </button>
+      <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <LuActivity size={18} />
+        Agent 분석 중
+      </h2>
+      <p className="muted" style={{ fontSize: '14px', marginBottom: '15px' }}>
+        현재 단계: <strong>{currentStageTitle}</strong>
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {stages.map((stage) => (
+          <article key={stage.id} className="stage-card">
+            <div className="flex-between">
+              <span style={{ fontWeight: 600, fontSize: '16px' }}>{stage.title}</span>
+              <span className={`status-badge ${stage.status}`}>{stage.status}</span>
+            </div>
+            <div className="log-box">
+              {stage.logs.map((log, idx) => (
+                <p key={idx} className="log-text">{log}</p>
+              ))}
+            </div>
+          </article>
+        ))}
+      </div>
+      
+      <div className="agent-btn">
+        <label className="btn" style={{ marginTop: '20px' }} onClick={onRequestCancel}>
+          분석 취소
+        </label>
+      </div>
     </section>
   );
 }

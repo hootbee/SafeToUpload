@@ -1,3 +1,5 @@
+import { MdOutlineTextsms } from "react-icons/md";
+
 interface Props {
   value: string;
   onChange: (value: string) => void;
@@ -6,7 +8,10 @@ interface Props {
 export function TextInputCard({ value, onChange }: Props) {
   return (
     <section className="card">
-      <h3>A-01 텍스트 입력</h3>
+      <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <MdOutlineTextsms size={18} />
+        텍스트 입력
+      </h3>
       <textarea
         className="text-area"
         rows={5}
