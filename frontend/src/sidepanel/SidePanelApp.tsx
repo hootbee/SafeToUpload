@@ -16,6 +16,7 @@ import { SettingsPanel } from './components/SettingsPanel';
 import { TextInputCard } from './components/TextInputCard';
 import { buildMockReport, createInitialStages, stageLogs } from './mock/mockAnalysis';
 import { initialHistory } from './mock/mockHistory';
+import { TbArrowLeft } from "react-icons/tb";
 
 const hasChromeRuntime = typeof chrome !== 'undefined' && !!chrome.runtime;
 
@@ -192,6 +193,16 @@ export function SidePanelApp() {
     }
   };
 
+  const handleBack = () => {
+    if(viewMode === 'image-masking' || viewMode === 'rewrite') {
+      setViewMode('report');
+    } else if(viewMode === 'report') {
+      setViewMode('home');
+    }
+  };
+
+  const showBackButton = tab === 'home' && (viewMode === 'report' || viewMode === 'rewrite' || viewMode === 'image-masking');
+
   if (!onboardingDone) {
     return (
       <div className="panel-root">
@@ -207,8 +218,13 @@ export function SidePanelApp() {
 
   return (
     <div className="panel-root">
-      <header className="panel-header">
-        <h1 className="logo-title">AI PRIVACY GUARD</h1>
+      <header className="panel-header" style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40px' }}> 
+        {showBackButton && (
+          <button onClick={handleBack} className="back-btn" style={{ position: 'absolute', left: 10, height: '10px', background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', display: 'flex', alignItems: 'center', padding: '6px' }}>
+            <TbArrowLeft size={20} />
+          </button>
+        )}
+        <h1 className="logo-title" style={{ margin: 0 }}>AI PRIVACY GUARD</h1>
       </header>
       
       <main className="panel-content">
