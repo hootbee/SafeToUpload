@@ -3,7 +3,7 @@ import { ONBOARDING_KEY } from '../shared/constants';
 import type { AnalysisInput, ExtensionMessage, Platform, RiskReportData, SettingsState, TabKey } from '../shared/types';
 import { AgentProgress } from './components/AgentProgress';
 import { BottomTabNav } from './components/BottomTabNav';
-import { ConfirmDialog } from './components/ConfirmDialog';
+import { ConfirmDialog, ConfirmDialog2 } from './components/ConfirmDialog';
 import { HistoryList } from './components/HistoryList';
 import { ImageMaskingPanel } from './components/ImageMaskingPanel';
 import { ImageUploadBox } from './components/ImageUploadBox';
@@ -292,13 +292,11 @@ export function SidePanelApp() {
       <BottomTabNav current={tab} onChange={setTab} />
 
       {selectedRiskId && report && (
-        <ConfirmDialog
+        <ConfirmDialog2
           title="위험 상세 보기"
           description={`${report.piiItems.find((r) => r.id === selectedRiskId)?.description} / 위치: ${report.piiItems.find((r) => r.id === selectedRiskId)?.location} / 정책: ${report.piiItems.find((r) => r.id === selectedRiskId)?.policyRef}`}
           confirmText="닫기"
-          cancelText="닫기"
           onConfirm={() => setSelectedRiskId(null)}
-          onCancel={() => setSelectedRiskId(null)}
         />
       )}
 

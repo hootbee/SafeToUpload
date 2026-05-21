@@ -455,3 +455,42 @@ h2 {
 .btn.danger:hover {
   background: #fecaca;
 }
+
+/* RiskReport 컴포넌트 스타일 */
+.mini-card h3 {
+  margin: 0 0 16px 0;
+  padding: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-text-main);
+  line-height: 1.2;
+}
+
+.riskreport-bar .bar-track {
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: #e2e8f0;
+  overflow: hidden;
+  margin-top: 0;
+}
+
+.riskreport-bar .bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #7DD3FC 0%, #1D4ED8 100%);
+  border-radius: 3px;
+  transition: width 0.3s ease-out;
+}
+
+.link-like {
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  transition: text-decoration-color 0.2s ease;
+}
+
+.link-like:hover {
+  text-decoration-color: currentColor;
+}
