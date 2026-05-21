@@ -1,4 +1,5 @@
 import type { Platform, SettingsState } from '../../shared/types';
+import { TbSettings, TbShare, TbAdjustmentsHorizontal, TbDatabase, TbBell, TbTrash } from "react-icons/tb";
 
 interface Props {
   settings: SettingsState;
@@ -17,31 +18,89 @@ export function SettingsPanel({
   onToggleNotification,
   onClearAll,
 }: Props) {
+  const retentionOptions = [7, 30, 90] as const;
+  const percentage = ((settings.sensitivity - 1) / 9) * 100;
+
   return (
-    <section className="card">
-      <h2>A-03 설정</h2>
-      <h3>감지 대상 SNS</h3>
-      <div className="check-grid">
-        {(Object.keys(settings.platforms) as Platform[]).map((p) => (
-          <label key={p}>
-            <input type="checkbox" checked={settings.platforms[p]} onChange={() => onTogglePlatform(p)} /> {p}
-          </label>
-        ))}
+    <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '18px', margin: 0 }}>
+        <TbSettings size={20} /> 설정
+      </h2>
+      <div>
+        <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '15px', margin: '5px 0 12px 0' }}>
+          <TbShare size={18} /> 감지 대상 SNS
+        </h3>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+          {(Object.keys(settings.platforms) as Platform[]).map((p) => {
+            const isActive = settings.platforms[p];
+            return (
+              <label
+                key={p}
+                style={{ display: 'flex', alignItems: 'center', padding: '10px 14px', background: isActive ? '#eff6ff' : '#f8fafc', border: `1px solid ${isActive ? '#3b82f6' : '#e2e8f0'}`, borderRadius: '12px', cursor: 'pointer', fontSize: '13px', fontWeight: isActive ? 600 : 500, color: isActive ? '#1d4ed8' : '#64748b', transition: 'all 0.2s' }}
+              >
+                <input type="checkbox" checked={isActive} onChange={() => onTogglePlatform(p)} style={{ marginRight: '8px', cursor: 'pointer' }} />
+                {p.toUpperCase()}
+              </label>
+            );
+          })}
+        </div>
       </div>
-      <h3>위험도 민감도: {settings.sensitivity}</h3>
-      <input type="range" min={1} max={10} value={settings.sensitivity} onChange={(e) => onSensitivity(Number(e.target.value))} />
-      <h3>데이터 보관</h3>
-      <select value={settings.retentionDays} onChange={(e) => onRetention(Number(e.target.value) as 7 | 30 | 90)}>
-        <option value={7}>7일</option>
-        <option value={30}>30일</option>
-        <option value={90}>90일</option>
-      </select>
-      <label>
-        <input type="checkbox" checked={settings.notifications} onChange={onToggleNotification} /> 알림 받기
-      </label>
-      <button className="btn danger" type="button" onClick={onClearAll}>
-        전체 기록 삭제
-      </button>
+      <div>
+        <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '15px', margin: '10px 0 12px 0' }}>
+          <TbAdjustmentsHorizontal size={18} /> 위험도 민감도: {settings.sensitivity}
+        </h3>
+        <input type="range" min={1} max={10} value={settings.sensitivity} onChange={(e) => onSensitivity(Number(e.target.value))} className="custom-slider" style={{ background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${percentage}%, #e2e8f0 ${percentage}%, #e2e8f0 100%)` }}/>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
+          <span>낮음</span>
+          <span>높음</span>
+        </div>
+      </div>
+      <div>
+        <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '15px', margin: '10px 0 12px 0' }}>
+          <TbDatabase size={18} /> 데이터 보관 기간
+        </h3>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          {retentionOptions.map((days) => {
+            const isActive = settings.retentionDays === days;
+            return (
+              <label
+                key={days}
+                role="button"
+                tabIndex={0}
+                onClick={() => onRetention(days)}
+                onKeyDown={(e) => e.key === 'Enter' && onRetention(days)}
+                style={{ flex: 1, textAlign: 'center', padding: '10px 0', background: isActive ? '#3b82f6' : '#f1f5f9', color: isActive ? '#ffffff' : '#64748b', borderRadius: '12px', fontSize: '13px', fontWeight: isActive ? 700 : 500, cursor: 'pointer', transition: 'all 0.2s' }}
+              >
+                {days}일
+              </label>
+            );
+          })}
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '8px' }}>
+        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px', background: '#f8fafc', borderRadius: '12px', cursor: 'pointer' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: 500, color: '#334155' }}>
+            <TbBell size={18} /> 알림 받기
+          </span>
+          <input 
+            type="checkbox" 
+            checked={settings.notifications} 
+            onChange={onToggleNotification} 
+            style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+          />
+        </label>
+
+        <label 
+          className="btn danger" 
+          role="button" 
+          tabIndex={0} 
+          onClick={onClearAll} 
+          onKeyDown={(e) => e.key === 'Enter' && onClearAll()}
+          style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px', padding: '14px', width: '100%', boxSizing: 'border-box', borderRadius: '25px' }}
+        >
+          <TbTrash size={18} /> 전체 기록 삭제
+        </label>
+      </div>
     </section>
   );
 }
