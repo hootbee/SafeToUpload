@@ -558,6 +558,7 @@ h2 {
   transform: scale(1.15);
 }
 
+/* 토글 디자인 */
 .custom-toggle {
   position: relative;
   display: inline-block;
