@@ -508,3 +508,25 @@ h2 {
 .link-like:hover {
   text-decoration-color: currentColor;
 }
+
+/* 스크롤바 디자인 */
+.history-scroll-area::-webkit-scrollbar,
+.report-scroll-area::-webkit-scrollbar {
+  width: 6px;
+}
+
+.history-scroll-area::-webkit-scrollbar-track,
+.report-scroll-area::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.history-scroll-area::-webkit-scrollbar-thumb,
+.report-scroll-area::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+}
+
+.history-scroll-area::-webkit-scrollbar-thumb:hover,
+.report-scroll-area::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
