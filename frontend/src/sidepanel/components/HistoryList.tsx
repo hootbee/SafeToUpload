@@ -1,6 +1,5 @@
 import type { HistoryItem } from '../../shared/types';
-import { TbHistory, TbCalendar } from "react-icons/tb";
-import { IoChatbubbleEllipsesOutline } from "react-icons/io5";
+import { TbHistory, TbCalendar, TbShare } from "react-icons/tb";
 
 type FilterKey = 'all' | 'low' | 'medium' | 'high';
 
@@ -95,7 +94,7 @@ export function HistoryList({ items, filter, onFilter }: Props) {
                       {item.date}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#64748b', fontSize: '13px', fontWeight: 500 }}>
-                      <IoChatbubbleEllipsesOutline size={14} />
+                      <TbShare size={14} />
                       {item.platform.toUpperCase()}
                     </div>
                   </div>
