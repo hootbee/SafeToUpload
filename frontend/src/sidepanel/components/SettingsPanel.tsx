@@ -77,19 +77,21 @@ export function SettingsPanel({
           })}
         </div>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '8px' }}>
-        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px', background: '#f8fafc', borderRadius: '12px', cursor: 'pointer' }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: 500, color: '#334155' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '4px' }}>
+        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
+          <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '15px', margin: 0 }}>
             <TbBell size={18} /> 알림 받기
-          </span>
-          <input 
-            type="checkbox" 
-            checked={settings.notifications} 
-            onChange={onToggleNotification} 
-            style={{ width: '16px', height: '16px', cursor: 'pointer' }}
-          />
+          </h3>
+          <div className="custom-toggle">
+            <input 
+              type="checkbox" 
+              checked={settings.notifications} 
+              onChange={onToggleNotification} 
+              className="toggle-checkbox"
+            />
+            <span className="toggle-slider"></span>
+          </div>
         </label>
-
         <label 
           className="btn danger" 
           role="button" 
