@@ -47,14 +47,21 @@ export function ModelStatusBanner({ status, progress, errorMessage, onLoadModel,
 
       {status === 'error' && (
         <div className="error-box">
-          <strong>권한 및 환경 오류 안내</strong>
+          <strong style={{ fontSize: '14px' }}>권한 및 환경 오류 안내</strong>
           <p className="muted" style={{ color: '#c81e1e' }}>
             {errorMessage || 'WebGPU 미지원 또는 권한이 부족합니다.'}
           </p>
           <p className="muted">CPU 모드로 전환하여 느리게 분석을 진행합니다.</p>
-          <button type="button" className="btn danger" onClick={onRetry} style={{ alignSelf: 'flex-start' }}>
+          <label
+            role="button"
+            className="btn danger"
+            onClick={onRetry}
+            style={{ alignSelf: 'flex-start' }}
+            tabIndex={0}
+            onKeyDown={(e) => e.key === 'Enter' && onRetry()}
+            >
             다시 시도
-          </button>
+          </label>
         </div>
       )}
     </section>

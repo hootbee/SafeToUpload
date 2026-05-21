@@ -254,7 +254,7 @@ export function SidePanelApp() {
                 <PlatformSelector value={platform} onChange={setPlatform} />
                 <ImageUploadBox files={files} onFilesChange={setFiles} />
                 
-                <button 
+                <button
                   className="btn primary" 
                   type="button" 
                   onClick={runAnalysis} 
