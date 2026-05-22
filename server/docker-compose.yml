@@ -1,0 +1,34 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: privacy_check_postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: privacy_check
+      POSTGRES_USER: privacy_user
+      POSTGRES_PASSWORD: privacy_password
+    volumes:
+      - privacy_check_pgdata:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: .
+      target: prod
+    container_name: privacy_check_api
+    restart: unless-stopped
+    ports:
+      - "3270:3270"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: "postgresql://privacy_user:privacy_password@postgres:5432/privacy_check?schema=public"
+    depends_on:
+      - postgres
+    volumes:
+      - ./uploads:/app/uploads
+      - ./storage:/app/storage
+
+volumes:
+  privacy_check_pgdata:
