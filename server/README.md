@@ -1,51 +1,57 @@
 # Privacy Check Backend (Nest.js)
 
-## 목적
-- 프론트는 API만 호출
-- 백엔드가 DB/스토리지/mock AI를 관리
-- 운영 기본은 Docker 컨테이너 기반
+Chrome Extension 프론트가 호출하는 백엔드 API 서버입니다.
 
-## 실행 모드
-- `APP_MODE=development-server`: 서버컴 개발/운영 모드
-- `APP_MODE=local`: 개인 PC 로컬 모드 전환용
+## 핵심 역할
+- 분석 요청/실행(mock)/조회/취소
+- 이력/설정 API 제공
+- DB/스토리지/AI mock 관리
 
-## 현재 권장 운영 방식
-- 서버: **API 컨테이너 + PostgreSQL 컨테이너**
-- 프론트 개발자: `VITE_API_BASE_URL=http://서버IP:3270`
+## 실행 시나리오
 
-## 파일 구성
-- `docker-compose.yml`: 운영 기본 (api + postgres)
-- `docker-compose.dev.yml`: 백엔드 개발용 watch 모드 (api-dev + postgres)
-- `docker-compose.db.yml`: DB만 단독 실행(호환용)
-- `Dockerfile`: dev/prod 멀티스테이지
+### A. 운영/일반 실행 (권장)
+- 컨테이너: `api(start:prod)` + `postgres`
+- 파일: `docker-compose.yml`
+
+### B. 백엔드/AI 개발 실행 (watch)
+- 컨테이너: `api-dev(start:dev)` + `postgres`
+- 파일: `docker-compose.dev.yml`
+
+### C. 비컨테이너 실행
+- 로컬 Node 프로세스에서 직접 실행
 
 ## 환경변수
 - 샘플: `.env.example`
 - 실제: `.env`
 
-핵심 값:
+필수:
 - `PORT=3270`
-- `APP_MODE=development-server|local`
-- `DATABASE_URL` (컨테이너 운영 시 compose가 `postgres:5432`로 주입)
-- `LOCAL_DATABASE_URL` (SQLite 전환 후보)
+- `APP_MODE=development-server | local`
+- `DATABASE_URL`
 - `CORS_ORIGIN`
 - `PERSIST_RAW_INPUT`
 
-## 1) 서버 운영(권장)
+## 1) 운영/일반 실행
 ```bash
-cd /Users/leejunhyeong/Desktop/my-project/safetoupload/server
+cd server
 cp .env.example .env
-docker compose up -d --build
+
+# Compose v1
+# docker-compose -f docker-compose.yml up -d --build
+
+# Compose v2
+# docker compose -f docker-compose.yml up -d --build
 ```
 
-로그:
+상태/로그:
 ```bash
-docker compose logs -f api
-```
+# v1
+# docker-compose -f docker-compose.yml ps
+# docker-compose -f docker-compose.yml logs -f api
 
-마이그레이션:
-```bash
-docker compose exec api npx prisma migrate dev --name init
+# v2
+# docker compose -f docker-compose.yml ps
+# docker compose -f docker-compose.yml logs -f api
 ```
 
 헬스체크:
@@ -53,47 +59,57 @@ docker compose exec api npx prisma migrate dev --name init
 curl http://localhost:3270/health
 ```
 
-## 2) 백엔드/AI 로컬 개발 (watch)
+## 2) 개발 watch 실행
 ```bash
-cd /Users/leejunhyeong/Desktop/my-project/safetoupload/server
+cd server
 cp .env.example .env
-docker compose -f docker-compose.dev.yml up -d --build
-```
 
-코드 변경 시 `api-dev`에서 `npm run start:dev` watch 반영.
+# v1
+# docker-compose -f docker-compose.dev.yml up -d --build
+
+# v2
+# docker compose -f docker-compose.dev.yml up -d --build
+```
 
 로그:
 ```bash
-docker compose -f docker-compose.dev.yml logs -f api-dev
+# v1
+# docker-compose -f docker-compose.dev.yml logs -f api-dev
+
+# v2
+# docker compose -f docker-compose.dev.yml logs -f api-dev
 ```
 
 중지:
 ```bash
-docker compose -f docker-compose.dev.yml down
+# v1
+# docker-compose -f docker-compose.dev.yml down
+
+# v2
+# docker compose -f docker-compose.dev.yml down
 ```
 
-## 3) Node 프로세스 로컬 실행 (비컨테이너)
+## 3) 로컬 Node 실행
 ```bash
-cd /Users/leejunhyeong/Desktop/my-project/safetoupload/server
+cd server
 npm install
-npx prisma generate
-npx prisma migrate dev --name init
+npx prisma@6.19.3 generate
+npx prisma@6.19.3 migrate dev --name init
 npm run start:dev
 ```
 
-## npm 스크립트
-- `npm run docker:up`
-- `npm run docker:down`
-- `npm run docker:logs`
-- `npm run docker:dev:up`
-- `npm run docker:dev:down`
-- `npm run docker:dev:logs`
+## Prisma
+마이그레이션:
+```bash
+npx prisma@6.19.3 migrate dev --name init
+```
 
-## 프론트 연동
-- 일반: `VITE_API_BASE_URL=http://서버IP:3270`
-- 로컬: `VITE_API_BASE_URL=http://localhost:3270`
+Studio:
+```bash
+npx prisma@6.19.3 studio
+```
 
-## API
+## API 목록
 - `GET /health`
 - `POST /analysis`
 - `POST /analysis/:id/run`
@@ -107,13 +123,13 @@ npm run start:dev
 - `PATCH /settings`
 - `POST /ai-proxy/mock`
 
-## AI 연결 위치
+## AI 연동 확장 지점
 - `src/ai-proxy/ai-proxy.service.ts`
-- `mockAnalyze()` 현재 사용
-- `requestExternalAiServer()` TODO 확장 지점
+- 현재: `mockAnalyze()`
+- 추후: `requestExternalAiServer()`
 
 ## 트러블슈팅
-- Docker 권한/데몬 문제: Docker Desktop 상태 먼저 확인
-- CORS 문제: 현재 `main.ts`에서 `origin: true` (개발용 전면 허용)
-- DB 인증 오류(P1000): `.env`의 DB 계정/비밀번호와 실제 DB 일치 확인
-- 서버 외부 접근: `app.listen(port, '0.0.0.0')` + 포트 개방
+- `permission denied ... docker.sock`: Docker Desktop/권한 문제
+- `error ... Desktop: permission denied`: Docker File Sharing에 프로젝트 경로 허용
+- `Prisma P1000`: DB 계정/비밀번호 불일치
+- `Failed to fetch`(확장): manifest host_permissions + 서버 CORS 확인

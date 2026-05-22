@@ -1,57 +1,57 @@
 # SafeToUpload
 
-개인정보 점검 Chrome Extension 프론트엔드 와이어프레임 프로젝트입니다.
+개인정보 점검 Chrome Extension + Nest.js 백엔드 프로젝트입니다.
 
-## 디렉토리 구조
+## 프로젝트 구조
+- `frontend/`: Chrome Extension 프론트엔드 (React + TypeScript + Vite)
+- `server/`: 백엔드 API 서버 (Nest.js + Prisma + PostgreSQL)
 
-- `frontend/`: React + TypeScript + Vite + Chrome Extension(MV3)
-- `server/`: 추후 Nest.js 서버 구현용(현재 placeholder)
+## 실행 방식
 
-## 요구 사항
+### 1) 중앙 서버 연결 모드
+프론트는 어디서 실행하든 중앙 백엔드 서버를 호출합니다.
 
-- Node.js 20+
-- npm 10+
-- Chrome 브라우저
-
-## 설치
-
-```bash
-cd /Users/leejunhyeong/Desktop/my-project/safetoupload/frontend
-npm install
+프론트(`frontend/.env`):
+```env
+VITE_API_BASE_URL=http://서버IP:3270
 ```
 
-## 개발 서버 실행
-
+백엔드(서버 컴퓨터에서 실행):
 ```bash
-cd /Users/leejunhyeong/Desktop/my-project/safetoupload/frontend
+cd server
+cp .env.example .env
+
+# Docker Compose v1
+docker-compose -f docker-compose.yml up -d --build
+
+# Docker Compose v2
+# docker compose -f docker-compose.yml up -d --build
+```
+
+서버 확인:
+```bash
+curl http://localhost:3270/health
+```
+
+### 2) 프론트 실행
+```bash
+cd frontend
+npm install
 npm run dev
 ```
 
-- 브라우저에서 `http://localhost:5173` 접속
-- 이 경로에서는 사이드패널 UI를 일반 웹 형태로 먼저 확인 가능
-
-## 프로덕션 빌드
-
+## Chrome Extension 로드
+1. `frontend`에서 빌드
 ```bash
-cd /Users/leejunhyeong/Desktop/my-project/safetoupload/frontend
 npm run build
 ```
+2. Chrome `chrome://extensions`
+3. 개발자 모드 ON
+4. 압축해제 로드
+5. `frontend/dist` 선택
 
-- 결과물 생성 위치: `frontend/dist`
+## 실행 모드 요약
+- 중앙 서버 연결: `VITE_API_BASE_URL=http://서버IP:3270`
 
-## Chrome 확장 로드 방법
-
-1. 위 빌드 명령으로 `frontend/dist` 생성
-2. Chrome에서 `chrome://extensions` 진입
-3. 우측 상단 `개발자 모드` 활성화
-4. `압축해제된 확장 프로그램 로드` 클릭
-5. `/Users/leejunhyeong/Desktop/my-project/safetoupload/frontend/dist` 선택
-
-## 동작 확인 체크리스트
-
-1. 확장 아이콘 클릭 시 Side Panel 열림
-2. 홈에서 `AI 모델 불러오기` 후 진행률 표시
-3. `분석 시작` 클릭 시 단계 진행 후 리포트 표시
-4. 하단 탭(Home / History / Settings) 전환
-5. 인스타그램/X/페이스북 페이지 우하단 `개인정보 점검` 플로팅 버튼 표시
-6. 텍스트 드래그 후 우클릭 시 `올려도댐? 개인정보 점검` 메뉴 표시
+## 문서
+- 백엔드 상세 문서: [`server/README.md`](./server/README.md)
