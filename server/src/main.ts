@@ -15,14 +15,8 @@ async function bootstrap() {
   ensureDirectory(uploadDir);
   ensureDirectory(tempDir);
 
-  const corsOriginRaw = config.get<string>('CORS_ORIGIN', 'http://localhost:5173');
-  const originList = corsOriginRaw
-    .split(',')
-    .map((v) => v.trim())
-    .filter((v) => v.length > 0);
-
   app.enableCors({
-    origin: originList.length > 0 ? originList : true,
+    origin: true,
     credentials: true,
   });
 
@@ -38,7 +32,7 @@ async function bootstrap() {
   await prisma.enableShutdownHooks(app);
 
   const port = Number(config.get<string>('PORT', '3000'));
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
 }
 
 bootstrap();
