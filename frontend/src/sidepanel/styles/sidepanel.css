@@ -159,14 +159,14 @@ input[type='range'] {
   width: 100%;
   padding: 15px;
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 600;
   border: none;
-  border-radius: 20px;
+  border-radius: 25px;
   box-shadow: 0 4px 10px rgba(29, 78, 216, 0.2);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: 'Pretendard', 'Noto Sans KR', 'Apple SD Gothic Neo', sans-serif !important;
+  font-family: 'Pretendard', 'Noto Sans KR', 'Apple SD Gothic Neo', sans-serif;
   cursor: pointer;
   white-space: nowrap;
   appearance: none;
@@ -312,11 +312,13 @@ input[type='range'] {
   border-top: 1px solid var(--color-border);
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(8px);
+  z-index: 100;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 .tab-btn {
   border: 0;
-  padding: 16px 0;
+  padding: 10px 0 12px 0;
   background: transparent;
   color: var(--color-text-muted);
   font-size: 14px;
@@ -328,6 +330,18 @@ input[type='range'] {
 .tab-btn.active { 
   color: var(--color-primary);
   font-weight: 600;
+}
+
+.tab-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.tab-label {
+  font-size: 11px;
+  font-weight: 500;
 }
 
 /* 플랫폼 버튼 스타일 */
@@ -454,4 +468,139 @@ h2 {
 
 .btn.danger:hover {
   background: #fecaca;
+}
+
+/* RiskReport 컴포넌트 스타일 */
+.mini-card h3 {
+  margin: 0 0 16px 0;
+  padding: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-text-main);
+  line-height: 1.2;
+}
+
+.riskreport-bar .bar-track {
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: #e2e8f0;
+  overflow: hidden;
+  margin-top: 0;
+}
+
+.riskreport-bar .bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #7DD3FC 0%, #1D4ED8 100%);
+  border-radius: 3px;
+  transition: width 0.3s ease-out;
+}
+
+.link-like {
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  transition: text-decoration-color 0.2s ease;
+}
+
+.link-like:hover {
+  text-decoration-color: currentColor;
+}
+
+/* 스크롤바 디자인 */
+.history-scroll-area::-webkit-scrollbar,
+.report-scroll-area::-webkit-scrollbar {
+  width: 6px;
+}
+
+.history-scroll-area::-webkit-scrollbar-track,
+.report-scroll-area::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.history-scroll-area::-webkit-scrollbar-thumb,
+.report-scroll-area::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+}
+
+.history-scroll-area::-webkit-scrollbar-thumb:hover,
+.report-scroll-area::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* 슬라이더 디자인 */
+.custom-slider {
+  -webkit-appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 4px;
+  outline: none;
+  cursor: pointer;
+  margin: 10px 0;
+}
+
+.custom-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffffff; 
+  border: 2px solid #3b82f6;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+
+.custom-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+/* 토글 디자인 */
+.custom-toggle {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+}
+
+.toggle-checkbox {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #e2e8f0;
+  border-radius: 24px;
+  transition: .3s ease;
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  border-radius: 50%;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  transition: .3s ease;
+}
+
+.toggle-checkbox:checked + .toggle-slider {
+  background-color: #3b82f6; 
+}
+
+.toggle-checkbox:checked + .toggle-slider:before {
+  transform: translateX(20px);
 }

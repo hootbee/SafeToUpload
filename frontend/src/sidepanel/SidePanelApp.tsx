@@ -3,7 +3,7 @@ import { ONBOARDING_KEY } from '../shared/constants';
 import type { AnalysisInput, ExtensionMessage, Platform, RiskReportData, SettingsState, TabKey } from '../shared/types';
 import { AgentProgress } from './components/AgentProgress';
 import { BottomTabNav } from './components/BottomTabNav';
-import { ConfirmDialog } from './components/ConfirmDialog';
+import { ConfirmDialog, ConfirmDialog2 } from './components/ConfirmDialog';
 import { HistoryList } from './components/HistoryList';
 import { ImageMaskingPanel } from './components/ImageMaskingPanel';
 import { ImageUploadBox } from './components/ImageUploadBox';
@@ -16,6 +16,7 @@ import { SettingsPanel } from './components/SettingsPanel';
 import { TextInputCard } from './components/TextInputCard';
 import { buildMockReport, createInitialStages, stageLogs } from './mock/mockAnalysis';
 import { initialHistory } from './mock/mockHistory';
+import { TbArrowLeft } from "react-icons/tb";
 
 const hasChromeRuntime = typeof chrome !== 'undefined' && !!chrome.runtime;
 
@@ -192,6 +193,16 @@ export function SidePanelApp() {
     }
   };
 
+  const handleBack = () => {
+    if(viewMode === 'image-masking' || viewMode === 'rewrite') {
+      setViewMode('report');
+    } else if(viewMode === 'report') {
+      setViewMode('home');
+    }
+  };
+
+  const showBackButton = tab === 'home' && (viewMode === 'report' || viewMode === 'rewrite' || viewMode === 'image-masking');
+
   if (!onboardingDone) {
     return (
       <div className="panel-root">
@@ -207,8 +218,13 @@ export function SidePanelApp() {
 
   return (
     <div className="panel-root">
-      <header className="panel-header">
-        <h1 className="logo-title">AI PRIVACY GUARD</h1>
+      <header className="panel-header" style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40px' }}> 
+        {showBackButton && (
+          <button onClick={handleBack} className="back-btn" style={{ position: 'absolute', left: 10, height: '10px', background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', display: 'flex', alignItems: 'center', padding: '6px' }}>
+            <TbArrowLeft size={20} />
+          </button>
+        )}
+        <h1 className="logo-title" style={{ margin: 0 }}>AI PRIVACY GUARD</h1>
       </header>
       
       <main className="panel-content">
@@ -238,7 +254,7 @@ export function SidePanelApp() {
                 <PlatformSelector value={platform} onChange={setPlatform} />
                 <ImageUploadBox files={files} onFilesChange={setFiles} />
                 
-                <button 
+                <button
                   className="btn primary" 
                   type="button" 
                   onClick={runAnalysis} 
@@ -292,13 +308,11 @@ export function SidePanelApp() {
       <BottomTabNav current={tab} onChange={setTab} />
 
       {selectedRiskId && report && (
-        <ConfirmDialog
+        <ConfirmDialog2
           title="위험 상세 보기"
           description={`${report.piiItems.find((r) => r.id === selectedRiskId)?.description} / 위치: ${report.piiItems.find((r) => r.id === selectedRiskId)?.location} / 정책: ${report.piiItems.find((r) => r.id === selectedRiskId)?.policyRef}`}
           confirmText="닫기"
-          cancelText="닫기"
           onConfirm={() => setSelectedRiskId(null)}
-          onCancel={() => setSelectedRiskId(null)}
         />
       )}
 
