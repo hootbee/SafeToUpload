@@ -1,8 +1,12 @@
 import { Type } from 'class-transformer';
-import { ArrayNotEmpty, ArrayUnique, IsArray, IsBoolean, IsEnum, IsInt, Max, Min } from 'class-validator';
+import { ArrayNotEmpty, ArrayUnique, IsArray, IsBoolean, IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { InferenceMode } from '../../common/enums/inference-mode.enum';
 import { Platform } from '../../common/enums/platform.enum';
 
 export class UpdateSettingsDto {
+  @IsOptional()
+  @IsEnum(InferenceMode)
+  inferenceMode?: InferenceMode;
   @IsArray()
   @ArrayNotEmpty()
   @ArrayUnique()

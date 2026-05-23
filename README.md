@@ -53,5 +53,29 @@ npm run build
 ## 실행 모드 요약
 - 중앙 서버 연결: `VITE_API_BASE_URL=http://서버IP:3270`
 
+## AI 추론 모드
+
+| 모드 | 모델 | 실행 위치 |
+|------|------|-----------|
+| 로컬 | Gemma4 E4B (WebGPU) | `onnx-community/gemma-4-E4B-it-ONNX` (공식 weights: `google/gemma-4-E4B-it`) |
+| 서버 | Gemma4 26B | `AI_SERVER_URL` 추론 서버 → Nest `AiProxyService` |
+
+로컬 WebGPU는 ONNX Runtime 파일을 확장 패키지 `dist/ort/`에 번들합니다 (CDN jsdelivr 미사용). 빌드 후 `npm run build`로 `dist/ort/*.mjs`, `*.wasm`이 생성되는지 확인하세요.
+
+로컬 모델 환경 변수 (`frontend/.env`):
+
+```env
+VITE_LOCAL_MODEL_ID=onnx-community/gemma-4-E4B-it-ONNX
+# VITE_HF_TOKEN=hf_...   # HF 다운로드 오류 시
+```
+
+프론트 설정에서 모드를 선택합니다. 서버 모드 개발 시 mock AI 서버:
+
+```bash
+python3 server/scripts/ai-server-mock.py
+# server/.env → AI_SERVER_URL=http://localhost:8000, AI_USE_MOCK_FALLBACK=false
+```
+
 ## 문서
 - 백엔드 상세 문서: [`server/README.md`](./server/README.md)
+- 이미지 마스킹 구현 방향: [`docs/image-masking.md`](./docs/image-masking.md)

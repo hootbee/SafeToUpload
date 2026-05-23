@@ -1,8 +1,10 @@
-import type { Platform, SettingsState } from '../../shared/types';
+import type { InferenceMode, Platform, SettingsState } from '../../shared/types';
 import { TbSettings, TbShare, TbAdjustmentsHorizontal, TbDatabase, TbBell, TbTrash } from "react-icons/tb";
+import { InferenceModeSelector } from './InferenceModeSelector';
 
 interface Props {
   settings: SettingsState;
+  onInferenceMode: (mode: InferenceMode) => void;
   onTogglePlatform: (platform: Platform) => void;
   onSensitivity: (value: number) => void;
   onRetention: (value: 7 | 30 | 90) => void;
@@ -12,6 +14,7 @@ interface Props {
 
 export function SettingsPanel({
   settings,
+  onInferenceMode,
   onTogglePlatform,
   onSensitivity,
   onRetention,
@@ -26,6 +29,7 @@ export function SettingsPanel({
       <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '18px', margin: 0 }}>
         <TbSettings size={20} /> 설정
       </h2>
+      <InferenceModeSelector value={settings.inferenceMode} onChange={onInferenceMode} />
       <div>
         <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '15px', margin: '5px 0 12px 0' }}>
           <TbShare size={18} /> 감지 대상 SNS
