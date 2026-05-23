@@ -9,6 +9,7 @@ export class SettingsService {
 
   private defaultSetting = {
     targetPlatforms: [Platform.INSTAGRAM, Platform.X, Platform.FACEBOOK],
+    inferenceMode: 'local',
     sensitivity: 50,
     retentionDays: 30,
     notificationEnabled: true,

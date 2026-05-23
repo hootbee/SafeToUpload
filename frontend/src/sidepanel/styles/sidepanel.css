@@ -374,16 +374,77 @@ h2 {
   border: 1px solid #e2e8f0;
 }
 
+.analysis-progress-bar-wrap {
+  height: 8px;
+  background: #e2e8f0;
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.analysis-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #6366f1);
+  border-radius: 999px;
+  transition: width 0.35s ease;
+}
+
+.analysis-progress-pct {
+  font-size: 12px;
+  color: #64748b;
+  margin: 0 0 10px;
+  text-align: right;
+}
+
+.analysis-activity-live {
+  font-size: 13px;
+  color: #1e40af;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 0 0 4px;
+  line-height: 1.45;
+  animation: activity-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes activity-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.88;
+  }
+}
+
+.stage-card--active {
+  border-color: #93c5fd;
+  background: #f0f9ff;
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.15);
+}
+
 .log-box {
   margin-top: 8px;
-  font-size: 14px;
+  font-size: 13px;
   color: #64748b;
-  max-height: 60px;
+  max-height: 120px;
   overflow-y: auto;
 }
 
 .log-text {
-  margin: 2px 0;
+  margin: 4px 0;
+  line-height: 1.4;
+}
+
+.log-text--muted {
+  font-style: italic;
+  opacity: 0.75;
+}
+
+.log-text--latest {
+  color: #1e3a8a;
+  font-weight: 500;
 }
 
 .status-badge.running {

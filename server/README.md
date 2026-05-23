@@ -123,10 +123,12 @@ npx prisma@6.19.3 studio
 - `PATCH /settings`
 - `POST /ai-proxy/mock`
 
-## AI 연동 확장 지점
+## AI 연동
 - `src/ai-proxy/ai-proxy.service.ts`
-- 현재: `mockAnalyze()`
-- 추후: `requestExternalAiServer()`
+- 서버 모드: `POST {AI_SERVER_URL}/v1/analyze` (모델: `AI_SERVER_MODEL`, 기본 `gemma-4-26b`)
+- 개발 mock: `python3 scripts/ai-server-mock.py` (포트 8000)
+- `AI_USE_MOCK_FALLBACK=true` 시 AI 서버 장애 시 `mockAnalyze()` 폴백
+- 로컬(WebGPU E4B) 추론은 확장 프로그램에서 실행, API 서버는 `inferenceMode=server` 요청만 처리
 
 ## 트러블슈팅
 - `permission denied ... docker.sock`: Docker Desktop/권한 문제

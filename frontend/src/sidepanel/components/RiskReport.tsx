@@ -3,6 +3,7 @@ import { TbReportAnalytics, TbMessageCode, TbHistory } from "react-icons/tb";
 import { HiOutlineIdentification } from "react-icons/hi2";
 import { FiCamera } from "react-icons/fi";
 import { IoImageOutline } from "react-icons/io5";
+import { ImagePreviewBox } from './ImagePreviewBox';
 
 interface Props {
   report: RiskReportData;
@@ -66,6 +67,9 @@ export function RiskReport({ report, onOpenDetail, onOpenRewrite, onOpenImageMas
         <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '16px', margin: '0 0 12px 0' }}>
           <IoImageOutline size={18} /> 이미지 위험 카드
         </h3>
+        <div style={{ marginBottom: '12px' }}>
+          <ImagePreviewBox src={report.imagePreviewUrl} height={140} />
+        </div>
         <p className="muted" style={{ fontSize: '14px', marginBottom: '5px', lineHeight: 1.5 }}>
           {report.imageRiskSummary}
         </p>
@@ -94,10 +98,26 @@ export function RiskReport({ report, onOpenDetail, onOpenRewrite, onOpenImageMas
         </h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
           {report.memoryPattern.frequencies.map((f) => (
-            <div className="riskreport-bar" key={f.label} style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '14px' }}>
-              <span style={{ width: '60px', color: '#64748b', lineHeight: '1' }}>{f.label}</span>
-              <div style={{ flex: 1, height: '8px', overflow: 'hidden', display: 'flex', alignItems: 'center' }} className="bar-track">
-                <div className="bar-fill" style={{ width: `${f.value * 12}%` }} />
+            <div
+              className="riskreport-bar"
+              key={f.label}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', minWidth: 0 }}
+            >
+              <span
+                style={{
+                  flexShrink: 0,
+                  whiteSpace: 'nowrap',
+                  color: '#64748b',
+                  lineHeight: 1,
+                }}
+              >
+                {f.label}
+              </span>
+              <div
+                style={{ flex: 1, minWidth: 0, height: '8px', overflow: 'hidden', display: 'flex', alignItems: 'center' }}
+                className="bar-track"
+              >
+                <div className="bar-fill" style={{ width: `${Math.min(100, f.value * 12)}%` }} />
               </div>
             </div>
           ))}

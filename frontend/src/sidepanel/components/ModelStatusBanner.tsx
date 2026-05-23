@@ -51,7 +51,7 @@ export function ModelStatusBanner({ status, progress, errorMessage, onLoadModel,
           <p className="muted" style={{ color: '#c81e1e' }}>
             {errorMessage || 'WebGPU 미지원 또는 권한이 부족합니다.'}
           </p>
-          <p className="muted">CPU 모드로 전환하여 느리게 분석을 진행합니다.</p>
+          <p className="muted">WebGPU·Hugging Face 접근(manifest, VITE_HF_TOKEN)을 확인한 뒤 다시 시도하세요.</p>
           <label
             role="button"
             className="btn danger"

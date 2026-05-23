@@ -8,14 +8,15 @@ datasource db {
 }
 
 model AnalysisRecord {
-  id         String          @id @default(cuid())
-  sourceType String
-  platform   String
-  pageUrl    String?
-  pageDomain String?
-  inputText  String?
-  imagePath  String?
-  status     String
+  id             String          @id @default(cuid())
+  sourceType     String
+  platform       String
+  inferenceMode  String          @default("local")
+  pageUrl        String?
+  pageDomain     String?
+  inputText      String?
+  imagePath      String?
+  status         String
   riskScore  Int?
   riskLevel  String?
   summary    String?
@@ -43,6 +44,7 @@ model AnalysisResult {
 model UserSetting {
   id                  String   @id @default(cuid())
   targetPlatforms     Json
+  inferenceMode       String   @default("local")
   sensitivity         Int
   retentionDays       Int
   notificationEnabled Boolean

@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AnalysisStatus } from '../common/enums/analysis-status.enum';
+import { InferenceMode } from '../common/enums/inference-mode.enum';
 import { RiskLevel } from '../common/enums/risk-level.enum';
 import { extractDomain } from '../common/utils/extract-domain.util';
 import { PrismaService } from '../prisma/prisma.service';
@@ -22,6 +23,7 @@ export class AnalysisService {
       data: {
         sourceType: dto.sourceType,
         platform: dto.platform,
+        inferenceMode: dto.inferenceMode ?? InferenceMode.SERVER,
         pageUrl: this.storageService.redactRawField(dto.pageUrl ?? null),
         pageDomain: extractDomain(dto.pageUrl),
         inputText: this.storageService.redactRawField(dto.inputText ?? null),
@@ -45,13 +47,18 @@ export class AnalysisService {
 
     await this.prisma.analysisRecord.update({ where: { id }, data: { status: AnalysisStatus.PROCESSING } });
 
-    const aiResult = this.aiProxyService.mockAnalyze({
-      sourceType: record.sourceType as any,
-      platform: record.platform as any,
-      inputText: record.inputText ?? undefined,
-      pageUrl: record.pageUrl ?? undefined,
-      imagePath: record.imagePath ?? undefined,
-    });
+    const inferenceMode = (record.inferenceMode as InferenceMode) || InferenceMode.SERVER;
+    const aiResult = await this.aiProxyService.analyze(
+      {
+        sourceType: record.sourceType as any,
+        platform: record.platform as any,
+        inferenceMode,
+        inputText: record.inputText ?? undefined,
+        pageUrl: record.pageUrl ?? undefined,
+        imagePath: record.imagePath ?? undefined,
+      },
+      inferenceMode,
+    );
 
     const piiTypes = Array.from(
       new Set((aiResult.piiItems as Array<{ type?: string }>).map((item) => item.type).filter(Boolean) as string[]),
