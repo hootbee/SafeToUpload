@@ -25,6 +25,12 @@ export interface AiAnalysisResponse {
   rawAiResponse: Record<string, unknown>;
 }
 
+export interface ServerLlmConfigPayload {
+  chatUrl?: string;
+  apiKey?: string;
+  model?: string;
+}
+
 export interface CreateAnalysisPayload {
   sourceType: 'manual' | 'context-menu' | 'content-script' | 'image-upload';
   platform: Platform;

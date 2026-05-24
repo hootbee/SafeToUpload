@@ -1,17 +1,87 @@
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InferenceMode } from '../common/enums/inference-mode.enum';
 import { RiskLevel } from '../common/enums/risk-level.enum';
+import { LlmConfigDto } from './dto/llm-config.dto';
 import { AiAnalysisRequestDto } from './dto/ai-analysis-request.dto';
+import { buildServerAnalysisPrompt } from './utils/analysis-prompt.util';
+import {
+  extractChatCompletionContent,
+  normalizeServerAiResponse,
+  parseModelJsonOutput,
+} from './utils/server-ai-normalize.util';
 import { AiAnalysisResponse } from './types/ai-analysis-response.type';
 
+export interface ResolvedLlmConfig {
+  chatUrl: string;
+  apiKey: string;
+  model: string;
+}
+
+const DEFAULT_LLM_TIMEOUT_MS = 600_000;
+/** 예전 기본값 — 26B 원격 추론에는 부족해 자동 상향 */
+const LEGACY_SHORT_TIMEOUT_MS = 120_000;
+
 @Injectable()
-export class AiProxyService {
+export class AiProxyService implements OnModuleInit {
   private readonly logger = new Logger(AiProxyService.name);
 
   constructor(private readonly configService: ConfigService) {}
 
-  async analyze(input: AiAnalysisRequestDto, mode: InferenceMode = InferenceMode.SERVER): Promise<AiAnalysisResponse> {
+  onModuleInit() {
+    const timeoutMs = this.resolveLlmTimeoutMs();
+    this.logger.log(
+      `LLM timeout: ${timeoutMs}ms (${Math.round(timeoutMs / 60000)}분) — AI_LLM_TIMEOUT_MS=${this.configService.get('AI_LLM_TIMEOUT_MS') ?? '(unset)'}, AI_SERVER_TIMEOUT_MS=${this.configService.get('AI_SERVER_TIMEOUT_MS') ?? '(unset)'}`,
+    );
+  }
+
+  /** 대형 모델(26B 등) 원격 추론용 — 기본 10분 */
+  resolveLlmTimeoutMs(): number {
+    const fromLlm = Number(this.configService.get<string>('AI_LLM_TIMEOUT_MS', ''));
+    if (Number.isFinite(fromLlm) && fromLlm > 0) {
+      return fromLlm <= LEGACY_SHORT_TIMEOUT_MS ? DEFAULT_LLM_TIMEOUT_MS : fromLlm;
+    }
+
+    const legacy = Number(
+      this.configService.get<string>('AI_SERVER_TIMEOUT_MS', String(DEFAULT_LLM_TIMEOUT_MS)),
+    );
+    if (!Number.isFinite(legacy) || legacy <= 0) return DEFAULT_LLM_TIMEOUT_MS;
+    if (legacy <= LEGACY_SHORT_TIMEOUT_MS) return DEFAULT_LLM_TIMEOUT_MS;
+    return legacy;
+  }
+
+  resolveLlmConfig(override?: LlmConfigDto): ResolvedLlmConfig {
+    const chatUrl = (
+      override?.chatUrl?.trim() ||
+      this.configService.get<string>('AI_LLM_CHAT_URL', '') ||
+      this.configService.get<string>('AI_SERVER_URL', '')
+    ).replace(/\/$/, '');
+
+    const normalizedUrl = chatUrl.includes('/api/chat/completions')
+      ? chatUrl
+      : chatUrl
+        ? `${chatUrl}/api/chat/completions`
+        : '';
+
+    return {
+      chatUrl: normalizedUrl,
+      apiKey: (
+        override?.apiKey?.trim() ||
+        this.configService.get<string>('AI_LLM_API_KEY', '') ||
+        ''
+      ).trim(),
+      model:
+        override?.model?.trim() ||
+        this.configService.get<string>('AI_LLM_MODEL', '') ||
+        this.configService.get<string>('AI_SERVER_MODEL', 'gemma4:26b'),
+    };
+  }
+
+  async analyze(
+    input: AiAnalysisRequestDto,
+    mode: InferenceMode = InferenceMode.SERVER,
+    llmOverride?: LlmConfigDto,
+  ): Promise<AiAnalysisResponse> {
     if (mode === InferenceMode.LOCAL) {
       throw new ServiceUnavailableException('Local inference runs in the browser extension, not on the API server.');
     }
@@ -19,7 +89,7 @@ export class AiProxyService {
     const useMockFallback = this.configService.get<string>('AI_USE_MOCK_FALLBACK', 'false') === 'true';
 
     try {
-      return await this.requestExternalAiServer(input);
+      return await this.requestChatCompletions(input, llmOverride);
     } catch (error) {
       this.logger.warn(`External AI request failed: ${(error as Error).message}`);
       if (useMockFallback) {
@@ -34,6 +104,7 @@ export class AiProxyService {
     meta: { fallback?: boolean; reason?: string } = {},
   ): AiAnalysisResponse {
     const hasText = Boolean(input.inputText && input.inputText.length > 0);
+    const llm = this.resolveLlmConfig();
     return {
       riskScore: hasText ? 76 : 42,
       riskLevel: hasText ? RiskLevel.HIGH : RiskLevel.MEDIUM,
@@ -69,33 +140,53 @@ export class AiProxyService {
       rewriteSuggestion: '개인 주소와 전화번호를 제거한 뒤 게시하는 것이 안전합니다.',
       rawAiResponse: {
         mode: meta.fallback ? 'mock-fallback' : 'mock',
-        model: this.configService.get<string>('AI_SERVER_MODEL', 'gemma-4-26b'),
-        aiServerUrl: this.configService.get<string>('AI_SERVER_URL', ''),
+        model: llm.model,
+        chatUrl: llm.chatUrl,
         fallbackReason: meta.reason,
       },
     };
   }
 
-  async requestExternalAiServer(input: AiAnalysisRequestDto): Promise<AiAnalysisResponse> {
-    const aiServerUrl = this.configService.get<string>('AI_SERVER_URL', 'http://localhost:8000').replace(/\/$/, '');
-    const model = this.configService.get<string>('AI_SERVER_MODEL', 'gemma-4-26b');
-    const timeoutMs = Number(this.configService.get<string>('AI_SERVER_TIMEOUT_MS', '120000'));
+  async requestChatCompletions(
+    input: AiAnalysisRequestDto,
+    llmOverride?: LlmConfigDto,
+  ): Promise<AiAnalysisResponse> {
+    const llm = this.resolveLlmConfig(llmOverride);
+    if (!llm.chatUrl) {
+      throw new ServiceUnavailableException(
+        'LLM Chat URL이 설정되지 않았습니다. server/.env의 AI_LLM_CHAT_URL 또는 확장 프로그램 설정을 확인하세요.',
+      );
+    }
+
+    const timeoutMs = this.resolveLlmTimeoutMs();
+    const maxTokens = Number(this.configService.get<string>('AI_LLM_MAX_TOKENS', '1024'));
+    const prompt = buildServerAnalysisPrompt({
+      platform: input.platform,
+      inputText: input.inputText,
+      imagePath: input.imagePath,
+    });
+
+    this.logger.log(
+      `LLM request: model=${llm.model}, timeoutMs=${timeoutMs}, maxTokens=${maxTokens}`,
+    );
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (llm.apiKey) {
+      headers.Authorization = `Bearer ${llm.apiKey}`;
+    }
+
     try {
-      const response = await fetch(`${aiServerUrl}/v1/analyze`, {
+      const response = await fetch(llm.chatUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
-          model,
-          sourceType: input.sourceType,
-          platform: input.platform,
-          inputText: input.inputText,
-          pageUrl: input.pageUrl,
-          imagePath: input.imagePath,
-          inferenceMode: InferenceMode.SERVER,
+          model: llm.model,
+          messages: [{ role: 'user', content: prompt }],
+          stream: false,
+          max_tokens: Number.isFinite(maxTokens) && maxTokens > 0 ? maxTokens : 1024,
         }),
         signal: controller.signal,
       });
@@ -103,49 +194,35 @@ export class AiProxyService {
       if (!response.ok) {
         const body = await response.text().catch(() => '');
         throw new ServiceUnavailableException(
-          `AI server responded with ${response.status}${body ? `: ${body.slice(0, 200)}` : ''}`,
+          `LLM server responded with ${response.status}${body ? `: ${body.slice(0, 300)}` : ''}`,
         );
       }
 
-      const payload = (await response.json()) as Partial<AiAnalysisResponse>;
-      return this.normalizeAiResponse(payload, { model, aiServerUrl });
+      const payload = (await response.json()) as unknown;
+      const rawContent = extractChatCompletionContent(payload);
+      const parsed = parseModelJsonOutput(rawContent);
+
+      if (!parsed) {
+        throw new ServiceUnavailableException(
+          'LLM 응답에서 분석 JSON을 파싱하지 못했습니다. 모델이 JSON만 출력하도록 프롬프트를 확인하세요.',
+        );
+      }
+
+      return normalizeServerAiResponse(parsed, input.inputText ?? '', {
+        model: llm.model,
+        chatUrl: llm.chatUrl,
+      });
+    } catch (error) {
+      if ((error as Error).name === 'AbortError') {
+        const minutes = Math.round(timeoutMs / 60000);
+        throw new ServiceUnavailableException(
+          `LLM 응답이 ${minutes}분(${timeoutMs}ms) 안에 오지 않았습니다. server/.env의 AI_LLM_TIMEOUT_MS를 늘리거나(예: 600000), Open WebUI에서 더 가벼운 모델을 사용하세요.`,
+        );
+      }
+      throw error;
     } finally {
       clearTimeout(timeout);
     }
   }
 
-  private normalizeAiResponse(
-    payload: Partial<AiAnalysisResponse>,
-    meta: { model: string; aiServerUrl: string },
-  ): AiAnalysisResponse {
-    const riskScore = Number(payload.riskScore ?? 0);
-    const riskLevel = this.normalizeRiskLevel(payload.riskLevel, riskScore);
-
-    return {
-      riskScore,
-      riskLevel,
-      piiItems: Array.isArray(payload.piiItems) ? payload.piiItems : [],
-      exifItems: Array.isArray(payload.exifItems) ? payload.exifItems : [],
-      imageRisks: Array.isArray(payload.imageRisks) ? payload.imageRisks : [],
-      contextResult:
-        payload.contextResult && typeof payload.contextResult === 'object' ? payload.contextResult : { summary: '' },
-      rewriteSuggestion: String(payload.rewriteSuggestion ?? ''),
-      rawAiResponse: {
-        ...(payload.rawAiResponse && typeof payload.rawAiResponse === 'object' ? payload.rawAiResponse : {}),
-        mode: 'server',
-        model: meta.model,
-        aiServerUrl: meta.aiServerUrl,
-      },
-    };
-  }
-
-  private normalizeRiskLevel(level: unknown, riskScore: number): RiskLevel {
-    if (typeof level === 'string' && Object.values(RiskLevel).includes(level as RiskLevel)) {
-      return level as RiskLevel;
-    }
-    if (riskScore >= 80) return RiskLevel.CRITICAL;
-    if (riskScore >= 60) return RiskLevel.HIGH;
-    if (riskScore >= 35) return RiskLevel.MEDIUM;
-    return RiskLevel.LOW;
-  }
 }

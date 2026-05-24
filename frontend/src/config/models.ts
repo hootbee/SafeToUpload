@@ -5,7 +5,14 @@ export const LOCAL_MODEL_ID =
 /** 공식 PyTorch/Safetensors weights (서버·문서 참조용) */
 export const OFFICIAL_LOCAL_MODEL_REF = 'google/gemma-4-E4B-it';
 
-export const SERVER_MODEL_ID = import.meta.env.VITE_SERVER_MODEL_ID || 'gemma-4-26b';
+export const SERVER_MODEL_ID = import.meta.env.VITE_SERVER_MODEL_ID || 'gemma4:26b';
+
+export const DEFAULT_SERVER_LLM_CHAT_URL =
+  import.meta.env.VITE_SERVER_LLM_CHAT_URL ||
+  'https://macmini.tail729089.ts.net:8443/api/chat/completions';
+
+export const DEFAULT_SERVER_LLM_MODEL =
+  import.meta.env.VITE_SERVER_LLM_MODEL || SERVER_MODEL_ID;
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3270';
 

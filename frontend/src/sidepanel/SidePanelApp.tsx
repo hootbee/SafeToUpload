@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { API_BASE_URL } from '../config/models';
+import { API_BASE_URL, DEFAULT_SERVER_LLM_CHAT_URL, DEFAULT_SERVER_LLM_MODEL } from '../config/models';
 import * as api from '../services/apiClient';
 import { mapAiResponseToReport, mapHistoryToItem, mapRecordToReport } from '../services/analysisMapper';
 import { detectMaskRegionsFromFile } from '../services/imageDetectService';
@@ -53,7 +53,22 @@ const defaultSettings = (): SettingsState => ({
   sensitivity: 6,
   retentionDays: 30,
   notifications: true,
+  serverLlm: {
+    chatUrl: DEFAULT_SERVER_LLM_CHAT_URL,
+    apiKey: '',
+    model: DEFAULT_SERVER_LLM_MODEL,
+  },
 });
+
+const mergeSettings = (partial: Partial<SettingsState>): SettingsState => {
+  const base = defaultSettings();
+  return {
+    ...base,
+    ...partial,
+    platforms: { ...base.platforms, ...partial.platforms },
+    serverLlm: { ...base.serverLlm, ...partial.serverLlm },
+  };
+};
 
 const platformsToArray = (platforms: SettingsState['platforms']): Platform[] =>
   (Object.keys(platforms) as Platform[]).filter((p) => platforms[p]);
@@ -175,25 +190,27 @@ export function SidePanelApp() {
     (async () => {
       try {
         const remote = await api.fetchSettings();
-        setSettings({
-          inferenceMode: (remote.inferenceMode as InferenceMode) ?? 'local',
-          platforms: {
-            instagram: remote.targetPlatforms.includes('instagram'),
-            x: remote.targetPlatforms.includes('x'),
-            facebook: remote.targetPlatforms.includes('facebook'),
-            other: remote.targetPlatforms.includes('other'),
-          },
-          sensitivity: Math.max(1, Math.min(10, Math.round(remote.sensitivity / 10) || 6)),
-          retentionDays: (remote.retentionDays === 7 || remote.retentionDays === 90
-            ? remote.retentionDays
-            : 30) as 7 | 30 | 90,
-          notifications: remote.notificationEnabled,
-        });
+        setSettings(
+          mergeSettings({
+            inferenceMode: (remote.inferenceMode as InferenceMode) ?? 'local',
+            platforms: {
+              instagram: remote.targetPlatforms.includes('instagram'),
+              x: remote.targetPlatforms.includes('x'),
+              facebook: remote.targetPlatforms.includes('facebook'),
+              other: remote.targetPlatforms.includes('other'),
+            },
+            sensitivity: Math.max(1, Math.min(10, Math.round(remote.sensitivity / 10) || 6)),
+            retentionDays: (remote.retentionDays === 7 || remote.retentionDays === 90
+              ? remote.retentionDays
+              : 30) as 7 | 30 | 90,
+            notifications: remote.notificationEnabled,
+          }),
+        );
       } catch {
         const saved = localStorage.getItem('safeToUploadSettings');
         if (saved) {
           try {
-            setSettings({ ...defaultSettings(), ...JSON.parse(saved) });
+            setSettings(mergeSettings(JSON.parse(saved) as Partial<SettingsState>));
           } catch {
             /* ignore */
           }
@@ -391,7 +408,11 @@ export function SidePanelApp() {
 
     updateStage('PII 탐지', 'done', '요청 등록 완료');
     updateStage('컨텍스트 분석', 'running', 'Gemma4 26B 서버 추론 실행 중...', 35);
-    await api.runAnalysis(created.id);
+    await api.runAnalysis(created.id, {
+      chatUrl: settings.serverLlm.chatUrl,
+      apiKey: settings.serverLlm.apiKey || undefined,
+      model: settings.serverLlm.model,
+    });
 
     if (analysisAbortedRef.current) {
       await api.cancelAnalysis(created.id).catch(() => undefined);
@@ -639,7 +660,8 @@ export function SidePanelApp() {
                   <section className="card model-banner">
                     <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700 }}>서버 AI 모드 (Gemma4 26B)</h3>
                     <p className="muted" style={{ marginBottom: 0 }}>
-                      분석 시 Nest API → AI 서버로 전달됩니다. 로컬 WebGPU 모델 로드는 필요 없습니다.
+                      Nest API → Chat Completions ({settings.serverLlm.model}). URL·API 키는 설정 탭에서
+                      변경할 수 있습니다.
                     </p>
                   </section>
                 )}
@@ -717,6 +739,13 @@ export function SidePanelApp() {
               const next = { ...settings, notifications: !settings.notifications };
               setSettings(next);
               void persistSettings(next);
+            }}
+            onServerLlmChange={(patch) => {
+              const next = {
+                ...settings,
+                serverLlm: { ...settings.serverLlm, ...patch },
+              };
+              setSettings(next);
             }}
             onClearAll={() => setShowDeleteDialog(true)}
           />

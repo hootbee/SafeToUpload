@@ -7,6 +7,7 @@ import { extractDomain } from '../common/utils/extract-domain.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { AiProxyService } from '../ai-proxy/ai-proxy.service';
 import { CreateAnalysisDto } from './dto/create-analysis.dto';
+import { RunAnalysisDto } from './dto/run-analysis.dto';
 import { StorageService } from '../storage/storage.service';
 import { AnalysisRunResult } from './types/analysis.types';
 
@@ -40,7 +41,7 @@ export class AnalysisService {
     };
   }
 
-  async run(id: string): Promise<AnalysisRunResult> {
+  async run(id: string, dto: RunAnalysisDto = {}): Promise<AnalysisRunResult> {
     const record = await this.prisma.analysisRecord.findUnique({ where: { id } });
     if (!record) throw new NotFoundException('Analysis record not found');
     if (record.status === AnalysisStatus.CANCELED) throw new BadRequestException('Canceled analysis cannot run');
@@ -58,6 +59,7 @@ export class AnalysisService {
         imagePath: record.imagePath ?? undefined,
       },
       inferenceMode,
+      dto.llm,
     );
 
     const piiTypes = Array.from(

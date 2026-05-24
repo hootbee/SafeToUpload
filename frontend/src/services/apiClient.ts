@@ -3,22 +3,32 @@ import type {
   AnalysisRecordResponse,
   CreateAnalysisPayload,
   HistoryRecordDto,
+  ServerLlmConfigPayload,
   SettingsDto,
 } from '../shared/aiTypes';
 import type { InferenceMode, Platform } from '../shared/types';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers ?? {}),
-    },
-  });
+  const url = `${API_BASE_URL}${path}`;
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(init?.headers ?? {}),
+      },
+    });
+  } catch (error) {
+    const reason = (error as Error).message || 'network error';
+    throw new Error(
+      `백엔드에 연결할 수 없습니다 (${reason}). API: ${API_BASE_URL} — server에서 npm run start:dev 실행 및 manifest host_permissions를 확인하세요.`,
+    );
+  }
 
   if (!response.ok) {
     const body = await response.text().catch(() => '');
-    throw new Error(body || `HTTP ${response.status}`);
+    throw new Error(body || `HTTP ${response.status} (${url})`);
   }
 
   return response.json() as Promise<T>;
@@ -35,7 +45,18 @@ export async function createAnalysis(payload: CreateAnalysisPayload) {
   });
 }
 
-export async function runAnalysis(id: string) {
+export async function runAnalysis(id: string, llm?: ServerLlmConfigPayload) {
+  const body =
+    llm && (llm.chatUrl || llm.apiKey || llm.model)
+      ? JSON.stringify({
+          llm: {
+            ...(llm.chatUrl ? { chatUrl: llm.chatUrl } : {}),
+            ...(llm.apiKey ? { apiKey: llm.apiKey } : {}),
+            ...(llm.model ? { model: llm.model } : {}),
+          },
+        })
+      : undefined;
+
   return request<{
     id: string;
     status: string;
@@ -44,7 +65,10 @@ export async function runAnalysis(id: string) {
     summary: string | null;
     piiTypes: string[];
     piiCount: number;
-  }>(`/analysis/${id}/run`, { method: 'POST' });
+  }>(`/analysis/${id}/run`, {
+    method: 'POST',
+    ...(body ? { body } : {}),
+  });
 }
 
 export async function getAnalysis(id: string) {
