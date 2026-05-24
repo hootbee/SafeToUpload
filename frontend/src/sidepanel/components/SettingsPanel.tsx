@@ -1,5 +1,6 @@
-import type { InferenceMode, Platform, SettingsState } from '../../shared/types';
-import { TbSettings, TbShare, TbAdjustmentsHorizontal, TbDatabase, TbBell, TbTrash } from "react-icons/tb";
+import type { CSSProperties } from 'react';
+import type { InferenceMode, Platform, ServerLlmSettings, SettingsState } from '../../shared/types';
+import { TbSettings, TbShare, TbAdjustmentsHorizontal, TbDatabase, TbBell, TbTrash, TbServer } from "react-icons/tb";
 import { InferenceModeSelector } from './InferenceModeSelector';
 
 interface Props {
@@ -9,8 +10,27 @@ interface Props {
   onSensitivity: (value: number) => void;
   onRetention: (value: 7 | 30 | 90) => void;
   onToggleNotification: () => void;
+  onServerLlmChange: (patch: Partial<ServerLlmSettings>) => void;
   onClearAll: () => void;
 }
+
+const fieldLabelStyle: CSSProperties = {
+  display: 'block',
+  fontSize: '12px',
+  fontWeight: 600,
+  color: '#64748b',
+  marginBottom: '6px',
+};
+
+const fieldInputStyle: CSSProperties = {
+  width: '100%',
+  boxSizing: 'border-box',
+  padding: '10px 12px',
+  borderRadius: '10px',
+  border: '1px solid #e2e8f0',
+  fontSize: '13px',
+  fontFamily: 'inherit',
+};
 
 export function SettingsPanel({
   settings,
@@ -19,6 +39,7 @@ export function SettingsPanel({
   onSensitivity,
   onRetention,
   onToggleNotification,
+  onServerLlmChange,
   onClearAll,
 }: Props) {
   const retentionOptions = [7, 30, 90] as const;
@@ -30,6 +51,50 @@ export function SettingsPanel({
         <TbSettings size={20} /> 설정
       </h2>
       <InferenceModeSelector value={settings.inferenceMode} onChange={onInferenceMode} />
+      {settings.inferenceMode === 'server' && (
+        <div>
+          <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '15px', margin: '5px 0 12px 0' }}>
+            <TbServer size={18} /> 서버 LLM (Chat Completions)
+          </h3>
+          <p className="muted" style={{ fontSize: '12px', margin: '0 0 12px 0', lineHeight: 1.5 }}>
+            Open WebUI 형식 API입니다. API 키는 아래에 입력하거나 서버 <code>server/.env</code>의{' '}
+            <code>AI_LLM_API_KEY</code>에 설정할 수 있습니다.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <label>
+              <span style={fieldLabelStyle}>API URL</span>
+              <input
+                type="url"
+                value={settings.serverLlm.chatUrl}
+                onChange={(e) => onServerLlmChange({ chatUrl: e.target.value })}
+                placeholder="https://.../api/chat/completions"
+                style={fieldInputStyle}
+              />
+            </label>
+            <label>
+              <span style={fieldLabelStyle}>모델</span>
+              <input
+                type="text"
+                value={settings.serverLlm.model}
+                onChange={(e) => onServerLlmChange({ model: e.target.value })}
+                placeholder="gemma4:26b"
+                style={fieldInputStyle}
+              />
+            </label>
+            <label>
+              <span style={fieldLabelStyle}>API 키</span>
+              <input
+                type="password"
+                value={settings.serverLlm.apiKey}
+                onChange={(e) => onServerLlmChange({ apiKey: e.target.value })}
+                placeholder="Bearer 토큰 (비워두면 서버 env 사용)"
+                autoComplete="off"
+                style={fieldInputStyle}
+              />
+            </label>
+          </div>
+        </div>
+      )}
       <div>
         <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '15px', margin: '5px 0 12px 0' }}>
           <TbShare size={18} /> 감지 대상 SNS

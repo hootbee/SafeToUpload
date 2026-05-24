@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
 import { AnalysisService } from './analysis.service';
 import { CreateAnalysisDto } from './dto/create-analysis.dto';
+import { RunAnalysisDto } from './dto/run-analysis.dto';
 
 @Controller('analysis')
 export class AnalysisController {
@@ -12,8 +13,8 @@ export class AnalysisController {
   }
 
   @Post(':id/run')
-  run(@Param('id') id: string) {
-    return this.analysisService.run(id);
+  run(@Param('id') id: string, @Body() dto: RunAnalysisDto) {
+    return this.analysisService.run(id, dto);
   }
 
   @Get(':id')

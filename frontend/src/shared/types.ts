@@ -86,12 +86,19 @@ export interface RiskReportData {
   rewrittenText: string;
 }
 
+export interface ServerLlmSettings {
+  chatUrl: string;
+  apiKey: string;
+  model: string;
+}
+
 export interface SettingsState {
   inferenceMode: InferenceMode;
   platforms: Record<Platform, boolean>;
   sensitivity: number;
   retentionDays: 7 | 30 | 90;
   notifications: boolean;
+  serverLlm: ServerLlmSettings;
 }
 
 export interface ExtensionMessage {
