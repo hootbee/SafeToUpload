@@ -107,3 +107,35 @@ export async function updateSettings(payload: {
     body: JSON.stringify(payload),
   });
 }
+
+export async function fetchPrivacyMemory() {
+  return request<
+    Array<{
+      id: string;
+      piiTypes: string[];
+      contextTags: string[];
+      riskyCombinations: string[];
+      seenCount: number;
+      lastSeenAt: string;
+      lastRiskLevel?: string | null;
+    }>
+  >('/privacy-memory');
+}
+
+export async function deleteAllPrivacyMemory() {
+  return request<{ message: string; deletedCount: number }>('/privacy-memory', {
+    method: 'DELETE',
+  });
+}
+
+export async function updatePrivacyMemorySettings(payload: {
+  privacyMemoryEnabled?: boolean;
+  privacyMemoryRetentionDays?: number;
+  privacyMemoryUseForBlocking?: boolean;
+  privacyMemoryUseForScoreBoost?: boolean;
+}) {
+  return request<SettingsDto>('/settings/privacy-memory', {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}

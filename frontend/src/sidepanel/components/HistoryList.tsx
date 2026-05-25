@@ -1,7 +1,7 @@
 import type { HistoryItem } from '../../shared/types';
 import { TbHistory, TbCalendar, TbShare } from "react-icons/tb";
 
-type FilterKey = 'all' | 'low' | 'medium' | 'high';
+type FilterKey = 'all' | 'low' | 'medium' | 'high' | 'critical';
 
 interface Props {
   items: HistoryItem[];
@@ -18,6 +18,7 @@ interface FilterOption {
 export function HistoryList({ items, filter, onFilter }: Props) {
   const filterOptions: FilterOption[] = [
     { key: 'all', label: '전체 보기', color: '#3182F6' },
+    { key: 'critical', label: '치명', color: '#B91C1C' },
     { key: 'high', label: '높음', color: '#EF4444' },
     { key: 'medium', label: '보통', color: '#F59E0B' },
     { key: 'low', label: '낮음', color: '#10B981' },
@@ -71,11 +72,18 @@ export function HistoryList({ items, filter, onFilter }: Props) {
           </div>
         ) : (
           items.map((item) => {
+            const isCritical = item.riskLevel === 'critical';
             const isHigh = item.riskLevel === 'high';
             const isMed = item.riskLevel === 'medium';
-            const badgeColor = isHigh ? '#EF4444' : isMed ? '#F59E0B' : '#10B981';
-            const badgeBg = isHigh ? '#FEE2E2' : isMed ? '#FEF3C7' : '#D1FAE5';
-            const badgeText = isHigh ? '위험 높음' : isMed ? '위험 보통' : '위험 낮음';
+            const badgeColor = isCritical ? '#B91C1C' : isHigh ? '#EF4444' : isMed ? '#F59E0B' : '#10B981';
+            const badgeBg = isCritical ? '#FEE2E2' : isHigh ? '#FEE2E2' : isMed ? '#FEF3C7' : '#D1FAE5';
+            const badgeText = isCritical
+              ? '치명'
+              : isHigh
+                ? '위험 높음'
+                : isMed
+                  ? '위험 보통'
+                  : '위험 낮음';
 
             return (
               <article 

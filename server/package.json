@@ -73,6 +73,12 @@
     ],
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
+    "moduleNameMapper": {
+      "^@shared/risk-scoring$": "<rootDir>/../../shared/risk-scoring/index.ts",
+      "^@shared/risk-scoring/(.*)$": "<rootDir>/../../shared/risk-scoring/$1",
+      "^@shared/privacy-memory$": "<rootDir>/../../shared/privacy-memory/index.ts",
+      "^@shared/privacy-memory/(.*)$": "<rootDir>/../../shared/privacy-memory/$1"
+    },
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },

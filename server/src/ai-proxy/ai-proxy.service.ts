@@ -1,7 +1,6 @@
 import { Injectable, Logger, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InferenceMode } from '../common/enums/inference-mode.enum';
-import { RiskLevel } from '../common/enums/risk-level.enum';
 import { LlmConfigDto } from './dto/llm-config.dto';
 import { AiAnalysisRequestDto } from './dto/ai-analysis-request.dto';
 import { buildServerAnalysisPrompt } from './utils/analysis-prompt.util';
@@ -105,9 +104,10 @@ export class AiProxyService implements OnModuleInit {
   ): AiAnalysisResponse {
     const hasText = Boolean(input.inputText && input.inputText.length > 0);
     const llm = this.resolveLlmConfig();
-    return {
-      riskScore: hasText ? 76 : 42,
-      riskLevel: hasText ? RiskLevel.HIGH : RiskLevel.MEDIUM,
+    const partial = {
+      categoryScores: hasText
+        ? { pii: 75, exif: 55, image: 50, context: 60 }
+        : { pii: 20, exif: 10, image: 15, context: 25 },
       piiItems: [
         {
           type: 'address',
@@ -145,6 +145,11 @@ export class AiProxyService implements OnModuleInit {
         fallbackReason: meta.reason,
       },
     };
+    return normalizeServerAiResponse(partial, input.inputText ?? '', {
+      model: llm.model,
+      chatUrl: llm.chatUrl,
+      platform: input.platform,
+    });
   }
 
   async requestChatCompletions(
@@ -211,6 +216,7 @@ export class AiProxyService implements OnModuleInit {
       return normalizeServerAiResponse(parsed, input.inputText ?? '', {
         model: llm.model,
         chatUrl: llm.chatUrl,
+        platform: input.platform,
       });
     } catch (error) {
       if ((error as Error).name === 'AbortError') {

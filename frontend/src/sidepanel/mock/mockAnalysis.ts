@@ -1,8 +1,7 @@
 import { ANALYSIS_STAGE_TITLES } from '../../shared/constants';
-import type { AiAnalysisResponse } from '../../shared/aiTypes';
-import type { AnalysisInput, AnalysisStage, RiskReportData } from '../../shared/types';
+import type { AnalysisInput, AnalysisStage } from '../../shared/types';
 import type { DetectionHit } from '../../services/imageDetectService';
-import { buildDynamicImageRiskSummary, buildMaskRegions } from '../../services/imageMaskService';
+import { mapAiResponseToReport, normalizeAiResponse } from '../../services/analysisMapper';
 
 /** 모의 분석용 SNS 본문 (전화·이메일·주소·동호수 등은 모두 가상) */
 export const MOCK_SNS_POST_TEXT = `오늘 새 아파트 입주 인증샷 올려봐요 🏠
@@ -30,13 +29,12 @@ export const stageLogs: Record<string, string[]> = {
   '리라이트 제안': ['위험 구간 치환안 생성 중...', '톤 유지형 대체 문장 생성'],
 };
 
-export const buildMockReport = (input: AnalysisInput): RiskReportData => {
+export const buildMockReport = (input: AnalysisInput) => {
   const hasImage = Boolean(input.imageName);
   const sampleText = input.text?.trim() ? input.text : MOCK_SNS_POST_TEXT;
 
-  const ai = {
-    riskScore: 88,
-    riskLevel: 'high' as const,
+  const partial = {
+    categoryScores: { pii: 85, exif: 55, image: 72, context: 78 },
     piiItems: [
       {
         type: 'phone',
@@ -93,7 +91,9 @@ export const buildMockReport = (input: AnalysisInput): RiskReportData => {
     rewriteSuggestion:
       '오늘 새 집 입주 인증샷이에요. 상세 주소·동호수·연락처는 비공개로 두었어요. 궁금한 점은 DM으로 부탁드려요.',
     rawAiResponse: { mode: 'mock' },
-  } satisfies AiAnalysisResponse;
+  };
+
+  const ai = normalizeAiResponse(partial, input);
 
   const mockDetections: DetectionHit[] = hasImage
     ? [
@@ -106,61 +106,5 @@ export const buildMockReport = (input: AnalysisInput): RiskReportData => {
       ]
     : [];
 
-  const maskBuild = buildMaskRegions(ai, hasImage, mockDetections, sampleText);
-
-  return {
-    score: 88,
-    piiItems: [
-      {
-        id: 'pii-1',
-        type: '휴대전화',
-        description: '010-9876-5432 (가상 번호)',
-        location: '본문',
-        policyRef: '개인 연락처 비공개 권장',
-      },
-      {
-        id: 'pii-2',
-        type: '이메일',
-        description: 'minji.kim.sample@example-mail.test',
-        location: '본문',
-        policyRef: '개인 식별 정보 최소화',
-      },
-      {
-        id: 'pii-3',
-        type: '주소·동호수',
-        description: '도로명 주소 및 101동 1204호 (가상)',
-        location: '본문·이미지 간판',
-        policyRef: '상세 주소·세대 식별 정보 비공개',
-      },
-      {
-        id: 'pii-4',
-        type: '실명',
-        description: '김민지 (가상 인명)',
-        location: '본문',
-        policyRef: '실명 최소 공개',
-      },
-    ],
-    exifSummary: '촬영 위치(GPS) 메타데이터가 남아 있을 수 있음 (mock)',
-    imageRiskSummary: buildDynamicImageRiskSummary(maskBuild),
-    contextSummary: String(ai.contextResult.summary),
-    memoryPattern: {
-      hasData: true,
-      frequencies: [
-        { label: '연락처', value: 7 },
-        { label: '주소', value: 6 },
-        { label: '동호수', value: 5 },
-        { label: '이름', value: 3 },
-      ],
-      keywords: ['010', '동', '호', '정릉로', '간판', '김민지'],
-    },
-    originalText: sampleText,
-    rewrittenText: ai.rewriteSuggestion,
-    maskRegions: maskBuild.regions,
-    maskCandidateMeta: {
-      gemmaCategories: maskBuild.gemmaCategories,
-      detectedCategories: maskBuild.detectedCategories,
-      unionCategories: maskBuild.unionCategories,
-      skippedCategories: maskBuild.skippedCategories,
-    },
-  };
+  return mapAiResponseToReport(ai, { ...input, text: sampleText }, mockDetections);
 };

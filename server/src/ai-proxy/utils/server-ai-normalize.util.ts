@@ -1,5 +1,6 @@
+import { applyDeterministicScoring } from '@shared/risk-scoring';
 import { RiskLevel } from '../../common/enums/risk-level.enum';
-import type { AiAnalysisResponse } from '../types/ai-analysis-response.type';
+import type { AiAnalysisResponse, PrivacyMemoryCandidate } from '../types/ai-analysis-response.type';
 
 const PHONE_REGEX = /01[016789][-\s]?\d{3,4}[-\s]?\d{4}/g;
 const EMAIL_REGEX = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
@@ -144,32 +145,16 @@ function resolveRewriteSuggestion(partial: PartialAi, originalText: string): str
   return heuristic || DEFAULT_REWRITE_HINT;
 }
 
-function estimateScore(items: AiAnalysisResponse['piiItems']) {
-  if (items.length >= 3) return 82;
-  if (items.length === 2) return 68;
-  if (items.length === 1) return 48;
-  return 22;
-}
-
-function clampScore(score: number) {
-  if (Number.isNaN(score)) return 0;
-  return Math.max(0, Math.min(100, Math.round(score)));
-}
-
-function normalizeRiskLevel(level: unknown, score: number): RiskLevel {
-  if (typeof level === 'string' && Object.values(RiskLevel).includes(level as RiskLevel)) {
-    return level as RiskLevel;
-  }
-  if (score >= 80) return RiskLevel.CRITICAL;
-  if (score >= 60) return RiskLevel.HIGH;
-  if (score >= 35) return RiskLevel.MEDIUM;
-  return RiskLevel.LOW;
+function parsePrivacyMemoryCandidate(partial: PartialAi): PrivacyMemoryCandidate | undefined {
+  const raw = partial.privacyMemoryCandidate;
+  if (!raw || typeof raw !== 'object') return undefined;
+  return raw as PrivacyMemoryCandidate;
 }
 
 export function normalizeServerAiResponse(
   partial: PartialAi,
   inputText: string,
-  meta: { model: string; chatUrl: string },
+  meta: { model: string; chatUrl: string; platform?: string },
 ): AiAnalysisResponse {
   const text = inputText ?? '';
   const piiItems =
@@ -177,12 +162,29 @@ export function normalizeServerAiResponse(
       ? partial.piiItems
       : heuristicPiiScan(text);
 
-  const riskScore = clampScore(Number(partial.riskScore ?? estimateScore(piiItems)));
-  const riskLevel = normalizeRiskLevel(partial.riskLevel, riskScore);
+  const scoring = applyDeterministicScoring({
+    piiItems: piiItems as Array<Record<string, unknown>>,
+    exifItems: Array.isArray(partial.exifItems) ? (partial.exifItems as Array<Record<string, unknown>>) : [],
+    imageRisks: Array.isArray(partial.imageRisks) ? (partial.imageRisks as Array<Record<string, unknown>>) : [],
+    contextResult:
+      partial.contextResult && typeof partial.contextResult === 'object'
+        ? (partial.contextResult as Record<string, unknown>)
+        : { summary: '문맥 분석 결과가 없습니다.' },
+    categoryScores: partial.categoryScores as PartialAi['categoryScores'],
+    riskReasons: partial.riskReasons as PartialAi['riskReasons'],
+    platform: meta.platform,
+    hasImage: Boolean(meta.imagePath?.trim()),
+  });
+
+  const riskLevel = scoring.riskLevel as RiskLevel;
 
   return {
-    riskScore,
+    riskScore: scoring.riskScore,
     riskLevel,
+    categoryScores: scoring.categoryScores,
+    scoreBreakdown: scoring.scoreBreakdown,
+    riskReasons: scoring.riskReasons,
+    escalationRules: scoring.escalationRules,
     piiItems,
     exifItems: Array.isArray(partial.exifItems) ? partial.exifItems : [],
     imageRisks: Array.isArray(partial.imageRisks) ? partial.imageRisks : [],
@@ -191,6 +193,7 @@ export function normalizeServerAiResponse(
         ? partial.contextResult
         : { summary: '문맥 분석 결과가 없습니다.' },
     rewriteSuggestion: resolveRewriteSuggestion(partial, text),
+    privacyMemoryCandidate: parsePrivacyMemoryCandidate(partial),
     rawAiResponse: {
       ...(partial.rawAiResponse && typeof partial.rawAiResponse === 'object' ? partial.rawAiResponse : {}),
       mode: 'server-chat-completions',

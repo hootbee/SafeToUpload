@@ -4,6 +4,13 @@ import react from '@vitejs/plugin-react';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      '@shared/risk-scoring': resolve(__dirname, '../shared/risk-scoring/index.ts'),
+      '@shared/privacy-memory': resolve(__dirname, '../shared/privacy-memory/index.ts'),
+      '@shared/analysis-prompt-schema': resolve(__dirname, '../shared/analysis-prompt-schema.ts'),
+    },
+  },
   plugins: [
     react(),
     viteStaticCopy({
