@@ -91,6 +91,7 @@ export interface AnalysisRecordResponse {
   sourceType: string;
   platform: string;
   inferenceMode?: string;
+  imagePath?: string | null;
   status: string;
   riskScore: number | null;
   riskLevel: string | null;

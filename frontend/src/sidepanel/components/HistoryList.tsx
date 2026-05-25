@@ -7,6 +7,7 @@ interface Props {
   items: HistoryItem[];
   filter: FilterKey;
   onFilter: (value: FilterKey) => void;
+  onSelectItem?: (id: string) => void;
 }
 
 interface FilterOption {
@@ -15,7 +16,7 @@ interface FilterOption {
   color?: string; 
 }
 
-export function HistoryList({ items, filter, onFilter }: Props) {
+export function HistoryList({ items, filter, onFilter, onSelectItem }: Props) {
   const filterOptions: FilterOption[] = [
     { key: 'all', label: '전체 보기', color: '#3182F6' },
     { key: 'critical', label: '치명', color: '#B91C1C' },
@@ -86,13 +87,27 @@ export function HistoryList({ items, filter, onFilter }: Props) {
                   : '위험 낮음';
 
             return (
-              <article 
-                key={item.id} 
-                style={{ 
-                  padding: '16px', 
-                  border: '1px solid #e2e8f0', 
-                  borderRadius: '12px', 
-                  background: '#f8fafc' 
+              <article
+                key={item.id}
+                role={onSelectItem ? 'button' : undefined}
+                tabIndex={onSelectItem ? 0 : undefined}
+                onClick={onSelectItem ? () => onSelectItem(item.id) : undefined}
+                onKeyDown={
+                  onSelectItem
+                    ? (e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          onSelectItem(item.id);
+                        }
+                      }
+                    : undefined
+                }
+                style={{
+                  padding: '16px',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '12px',
+                  background: '#f8fafc',
+                  cursor: onSelectItem ? 'pointer' : 'default',
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
