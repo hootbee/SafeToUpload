@@ -14,6 +14,13 @@
     "sourceMap": true,
     "outDir": "./dist",
     "baseUrl": "./",
+    "paths": {
+      "@shared/risk-scoring": ["../shared/risk-scoring/index.ts"],
+      "@shared/risk-scoring/*": ["../shared/risk-scoring/*"],
+      "@shared/privacy-memory": ["../shared/privacy-memory/index.ts"],
+      "@shared/privacy-memory/*": ["../shared/privacy-memory/*"],
+      "@shared/analysis-prompt-schema": ["../shared/analysis-prompt-schema.ts"]
+    },
     "incremental": true,
     "skipLibCheck": true,
     "strictNullChecks": true,

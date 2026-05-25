@@ -5,11 +5,9 @@ interface Props {
   status: ModelStatus;
   progress: number;
   errorMessage?: string;
-  onLoadModel: () => void;
-  onRetry: () => void;
 }
 
-export function ModelStatusBanner({ status, progress, errorMessage, onLoadModel, onRetry }: Props) {
+export function ModelStatusBanner({ status, progress, errorMessage }: Props) {
   return (
     <section className="card model-banner">
       <div className="model-banner-header">
@@ -26,12 +24,9 @@ export function ModelStatusBanner({ status, progress, errorMessage, onLoadModel,
       </div>
 
       {status === 'not-loaded' && (
-        <>
-          <p className="muted">안전한 점검을 위해 AI 모델을 불러옵니다.</p>
-          <label className="btn" onClick={onLoadModel} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            AI 모델 불러오기
-          </label>
-        </>
+        <p className="muted" style={{ marginBottom: 0 }}>
+          「개인정보 분석 시작」을 누르면 AI 모델이 자동으로 불러와집니다.
+        </p>
       )}
 
       {status === 'loading' && (
@@ -51,17 +46,10 @@ export function ModelStatusBanner({ status, progress, errorMessage, onLoadModel,
           <p className="muted" style={{ color: '#c81e1e' }}>
             {errorMessage || 'WebGPU 미지원 또는 권한이 부족합니다.'}
           </p>
-          <p className="muted">WebGPU·Hugging Face 접근(manifest, VITE_HF_TOKEN)을 확인한 뒤 다시 시도하세요.</p>
-          <label
-            role="button"
-            className="btn danger"
-            onClick={onRetry}
-            style={{ alignSelf: 'flex-start' }}
-            tabIndex={0}
-            onKeyDown={(e) => e.key === 'Enter' && onRetry()}
-            >
-            다시 시도
-          </label>
+          <p className="muted" style={{ marginBottom: 0 }}>
+            WebGPU·Hugging Face 접근(manifest, VITE_HF_TOKEN)을 확인한 뒤 「개인정보 분석 시작」을 다시
+            눌러 주세요.
+          </p>
         </div>
       )}
     </section>

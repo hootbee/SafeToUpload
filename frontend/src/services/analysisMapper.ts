@@ -1,4 +1,5 @@
-import type { AiAnalysisResponse, AiPiiItem } from '../shared/aiTypes';
+import { applyDeterministicScoring, computeNormalizedRisk } from '@shared/risk-scoring';
+import type { AiAnalysisResponse, AiPiiItem, PrivacyMemoryCandidate } from '../shared/aiTypes';
 import type { AnalysisInput, Platform, RiskReportData } from '../shared/types';
 import type { DetectionHit } from './imageDetectService';
 import { buildDynamicImageRiskSummary, buildMaskRegions } from './imageMaskService';
@@ -176,12 +177,33 @@ export function normalizeAiResponse(
       ? partial.piiItems
       : heuristicPiiScan(text);
 
-  const riskScore = clampScore(Number(partial.riskScore ?? estimateScore(piiItems)));
-  const riskLevel = normalizeRiskLevel(partial.riskLevel, riskScore);
+  const hasImage = Boolean(input.imageFile || input.imageName);
+  const scoring = applyDeterministicScoring({
+    piiItems: piiItems as Array<Record<string, unknown>>,
+    exifItems: Array.isArray(partial.exifItems) ? partial.exifItems : [],
+    imageRisks: Array.isArray(partial.imageRisks) ? partial.imageRisks : [],
+    contextResult:
+      partial.contextResult && typeof partial.contextResult === 'object'
+        ? partial.contextResult
+        : { summary: '문맥 분석 결과가 없습니다.' },
+    categoryScores: partial.categoryScores,
+    riskReasons: partial.riskReasons,
+    platform: input.platform,
+    hasImage,
+  });
+
+  const privacyMemoryCandidate =
+    partial.privacyMemoryCandidate && typeof partial.privacyMemoryCandidate === 'object'
+      ? (partial.privacyMemoryCandidate as PrivacyMemoryCandidate)
+      : undefined;
 
   return {
-    riskScore,
-    riskLevel,
+    riskScore: scoring.riskScore,
+    riskLevel: scoring.riskLevel,
+    categoryScores: scoring.categoryScores,
+    scoreBreakdown: scoring.scoreBreakdown,
+    riskReasons: scoring.riskReasons,
+    escalationRules: scoring.escalationRules,
     piiItems,
     exifItems: Array.isArray(partial.exifItems) ? partial.exifItems : [],
     imageRisks: Array.isArray(partial.imageRisks) ? partial.imageRisks : [],
@@ -193,7 +215,105 @@ export function normalizeAiResponse(
       partial as Partial<AiAnalysisResponse> & Record<string, unknown>,
       text,
     ),
+    privacyMemoryCandidate,
+    memorySignal: partial.memorySignal,
     rawAiResponse: partial.rawAiResponse ?? { mode: 'local' },
+  };
+}
+
+function mergeImageRisksFromDetections(
+  imageRisks: Array<Record<string, unknown>>,
+  detections: DetectionHit[],
+): Array<Record<string, unknown>> {
+  const merged = [...imageRisks];
+  const keys = new Set(merged.map((r) => `${String(r.type ?? '')}:${String(r.label ?? '')}`));
+
+  for (const hit of detections) {
+    const key = `${hit.category}:${hit.label}`;
+    if (keys.has(key)) continue;
+    keys.add(key);
+    merged.push({
+      type: hit.category,
+      label: hit.label,
+      description: `자동 탐지(신뢰도 ${Math.round(hit.score * 100)}%)`,
+      severity: hit.score >= 0.2 ? 'high' : 'medium',
+    });
+  }
+  return merged;
+}
+
+/** OwlViT 탐지·imageRisks 반영 후 점수·원인 재계산 (분석 시점보다 리포트 시점이 정확함) */
+function applyImageEvidenceToAi(
+  ai: AiAnalysisResponse,
+  input: AnalysisInput,
+  detections: DetectionHit[],
+): AiAnalysisResponse {
+  const hasImage = Boolean(input.imageFile || input.imageName);
+  if (!hasImage) return ai;
+
+  const imageRisks = mergeImageRisksFromDetections(
+    ai.imageRisks as Array<Record<string, unknown>>,
+    detections,
+  );
+
+  const normalized = computeNormalizedRisk({
+    piiItems: ai.piiItems as Array<Record<string, unknown>>,
+    exifItems: ai.exifItems,
+    imageRisks,
+    contextResult: ai.contextResult,
+    categoryScores: {
+      pii: ai.categoryScores.pii,
+      exif: ai.categoryScores.exif,
+      context: ai.categoryScores.context,
+    },
+    riskReasons: ai.riskReasons,
+    platform: input.platform,
+    hasImage: true,
+  });
+
+  const memoryBoost =
+    ai.memorySignal?.matched && ai.memorySignal.piiBoost + ai.memorySignal.contextBoost > 0
+      ? { piiBoost: ai.memorySignal.piiBoost, contextBoost: ai.memorySignal.contextBoost }
+      : undefined;
+
+  const scoring = memoryBoost
+    ? applyDeterministicScoring(
+        {
+          piiItems: ai.piiItems as Array<Record<string, unknown>>,
+          exifItems: ai.exifItems,
+          imageRisks,
+          contextResult: ai.contextResult,
+          categoryScores: {
+            pii: normalized.categoryScores.pii,
+            exif: normalized.categoryScores.exif,
+            context: normalized.categoryScores.context,
+          },
+          riskReasons: normalized.riskReasons,
+          platform: input.platform,
+          hasImage: true,
+        },
+        memoryBoost,
+      )
+    : {
+        riskScore: normalized.riskScore,
+        riskLevel: normalized.riskLevel,
+        categoryScores: normalized.categoryScores,
+        scoreBreakdown: normalized.scoreBreakdown,
+        riskReasons: normalized.riskReasons,
+        escalationRules: normalized.escalationRules,
+      };
+
+  const escalationRules = [...new Set([...ai.escalationRules, ...scoring.escalationRules])];
+
+  return {
+    ...ai,
+    imageRisks,
+    riskScore: scoring.riskScore,
+    riskLevel: scoring.riskLevel,
+    categoryScores: scoring.categoryScores,
+    scoreBreakdown: scoring.scoreBreakdown,
+    riskReasons: scoring.riskReasons,
+    escalationRules,
   };
 }
 
@@ -202,26 +322,35 @@ export function mapAiResponseToReport(
   input: AnalysisInput,
   detections: DetectionHit[] = [],
 ): RiskReportData {
-  const contextSummary = String(ai.contextResult.summary ?? '컨텍스트 분석 완료');
+  const aiWithImage = applyImageEvidenceToAi(ai, input, detections);
+
+  const contextSummary = String(aiWithImage.contextResult.summary ?? '컨텍스트 분석 완료');
   const exifSummary =
-    ai.exifItems.length > 0
-      ? ai.exifItems.map((item) => String(item.label ?? item.type ?? 'EXIF')).join(', ')
+    aiWithImage.exifItems.length > 0
+      ? aiWithImage.exifItems.map((item) => String(item.label ?? item.type ?? '사진 메타정보')).join(', ')
       : '이미지 메타데이터 위험 없음';
 
   const hasImage = Boolean(input.imageFile || input.imageName);
-  const maskBuild = buildMaskRegions(ai, hasImage, detections, input.text);
+  const maskBuild = buildMaskRegions(aiWithImage, hasImage, detections, input.text);
   const imageRiskSummary = hasImage
     ? buildDynamicImageRiskSummary(maskBuild)
     : '이미지 미업로드, 텍스트 중심 분석';
 
-  const keywords = ai.piiItems
+  const keywords = aiWithImage.piiItems
     .map((item) => item.text || item.label || item.type)
     .filter(Boolean)
     .slice(0, 6) as string[];
 
   return {
-    score: ai.riskScore,
-    piiItems: ai.piiItems.map((item, index) => mapPiiToRiskDetail(item, index)),
+    score: aiWithImage.riskScore,
+    riskLevel: aiWithImage.riskLevel,
+    categoryScores: aiWithImage.categoryScores,
+    scoreBreakdown: aiWithImage.scoreBreakdown,
+    riskReasons: aiWithImage.riskReasons,
+    escalationRules: aiWithImage.escalationRules,
+    memorySignal: aiWithImage.memorySignal,
+    uploadBlocked: aiWithImage.memorySignal?.shouldBlock ?? false,
+    piiItems: aiWithImage.piiItems.map((item, index) => mapPiiToRiskDetail(item, index)),
     exifSummary,
     imageRiskSummary,
     contextSummary,
@@ -231,7 +360,7 @@ export function mapAiResponseToReport(
       keywords,
     },
     originalText: input.text,
-    rewrittenText: ai.rewriteSuggestion,
+    rewrittenText: aiWithImage.rewriteSuggestion,
     maskRegions: maskBuild.regions,
     maskCandidateMeta: {
       gemmaCategories: maskBuild.gemmaCategories,
@@ -255,16 +384,24 @@ export function mapRecordToReport(record: {
   } | null;
 }, platform: Platform, imageName?: string, detections: DetectionHit[] = []): RiskReportData {
   const input: AnalysisInput = { text: record.inputText ?? '', platform, imageName };
+  const ctx = (record.result?.contextResult as Record<string, unknown>) ?? {};
   const ai = normalizeAiResponse(
     {
       riskScore: record.riskScore ?? undefined,
+      riskLevel: undefined,
+      categoryScores: ((record.result as Record<string, unknown> | undefined)?.categoryScores ??
+        ctx.categoryScores) as AiAnalysisResponse['categoryScores'],
+      riskReasons: ((record.result as Record<string, unknown> | undefined)?.riskReasons ??
+        ctx.riskReasons) as AiAnalysisResponse['riskReasons'],
       piiItems: (record.result?.piiItems as AiPiiItem[]) ?? [],
       exifItems: (record.result?.exifItems as Array<Record<string, unknown>>) ?? [],
       imageRisks: (record.result?.imageRisks as Array<Record<string, unknown>>) ?? [],
-      contextResult: (record.result?.contextResult as Record<string, unknown>) ?? {
-        summary: record.summary ?? '',
-      },
+      contextResult: { ...ctx, summary: record.summary ?? ctx.summary ?? '' },
       rewriteSuggestion: record.result?.rewriteSuggestion ?? '',
+      escalationRules: ((record.result as Record<string, unknown> | undefined)?.escalationRules ??
+        ctx.escalationRules) as string[],
+      scoreBreakdown: ctx.scoreBreakdown as AiAnalysisResponse['scoreBreakdown'],
+      memorySignal: ctx.memorySignal as AiAnalysisResponse['memorySignal'],
     },
     input,
   );
@@ -290,28 +427,6 @@ function summarizeFrequencies(items: AiPiiItem[]) {
   return Array.from(counts.entries()).map(([label, value]) => ({ label, value }));
 }
 
-function estimateScore(items: AiPiiItem[]) {
-  if (items.length >= 3) return 82;
-  if (items.length === 2) return 68;
-  if (items.length === 1) return 48;
-  return 22;
-}
-
-function clampScore(score: number) {
-  if (Number.isNaN(score)) return 0;
-  return Math.max(0, Math.min(100, Math.round(score)));
-}
-
-function normalizeRiskLevel(level: unknown, score: number) {
-  if (typeof level === 'string' && ['low', 'medium', 'high', 'critical'].includes(level)) {
-    return level as AiAnalysisResponse['riskLevel'];
-  }
-  if (score >= 80) return 'critical';
-  if (score >= 60) return 'high';
-  if (score >= 35) return 'medium';
-  return 'low';
-}
-
 export function mapHistoryToItem(record: {
   id: string;
   platform: string;
@@ -323,7 +438,7 @@ export function mapHistoryToItem(record: {
     id: record.id,
     date: record.createdAt.slice(0, 10),
     platform: record.platform as Platform,
-    riskLevel: (record.riskLevel ?? 'low') as 'low' | 'medium' | 'high',
+    riskLevel: (record.riskLevel ?? 'low') as import('../shared/types').RiskLevel,
     summary: record.summary ?? '분석 요약 없음',
   };
 }

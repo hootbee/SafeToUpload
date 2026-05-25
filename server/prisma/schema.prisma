@@ -42,12 +42,39 @@ model AnalysisResult {
 }
 
 model UserSetting {
-  id                  String   @id @default(cuid())
-  targetPlatforms     Json
-  inferenceMode       String   @default("local")
-  sensitivity         Int
-  retentionDays       Int
-  notificationEnabled Boolean
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id                           String   @id @default(cuid())
+  targetPlatforms              Json
+  inferenceMode                String   @default("local")
+  sensitivity                  Int
+  retentionDays                Int
+  notificationEnabled          Boolean
+  privacyMemoryEnabled         Boolean  @default(true)
+  privacyMemoryRetentionDays   Int      @default(90)
+  privacyMemoryUseForBlocking    Boolean  @default(false)
+  privacyMemoryUseForScoreBoost  Boolean  @default(true)
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
+}
+
+model PrivacyMemoryProfile {
+  id                String    @id @default(cuid())
+  userId            String    @default("default")
+  memoryType        String    @default("privacy_context")
+  piiTypes          Json
+  contextTags       Json
+  riskyCombinations Json
+  sourceTypes       Json?
+  seenCount         Int       @default(1)
+  riskWeight        Float     @default(0.5)
+  confidence        Float     @default(0.5)
+  lastRiskLevel     String?
+  lastRiskScoreBand String?
+  firstSeenAt       DateTime  @default(now())
+  lastSeenAt        DateTime  @default(now())
+  expiresAt         DateTime?
+  isActive          Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([userId, isActive])
 }

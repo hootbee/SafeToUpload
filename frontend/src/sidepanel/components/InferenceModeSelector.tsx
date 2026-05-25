@@ -1,5 +1,4 @@
 import type { InferenceMode } from '../../shared/types';
-import { LOCAL_MODEL_ID, OFFICIAL_LOCAL_MODEL_REF, SERVER_MODEL_ID } from '../../config/models';
 
 interface Props {
   value: InferenceMode;
@@ -33,12 +32,10 @@ export function InferenceModeSelector({ value, onChange }: Props) {
               checked={value === 'local'}
               onChange={() => onChange('local')}
             />
-            로컬 (E4B / WebGPU)
+            로컬 모델
           </span>
           <span className="muted" style={{ fontSize: '12px', paddingLeft: '24px' }}>
-            ONNX: {LOCAL_MODEL_ID}
-            <br />
-            공식: {OFFICIAL_LOCAL_MODEL_REF}
+            디바이스 내에서 자체적으로 처리
           </span>
         </label>
         <label
@@ -60,10 +57,10 @@ export function InferenceModeSelector({ value, onChange }: Props) {
               checked={value === 'server'}
               onChange={() => onChange('server')}
             />
-            서버 (26B)
+            서버 모델
           </span>
           <span className="muted" style={{ fontSize: '12px', paddingLeft: '24px' }}>
-            {SERVER_MODEL_ID} · 중앙 AI 서버 경유
+            중앙 AI 서버 경유
           </span>
         </label>
       </div>

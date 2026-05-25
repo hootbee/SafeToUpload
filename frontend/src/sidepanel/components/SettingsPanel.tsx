@@ -11,6 +11,11 @@ interface Props {
   onRetention: (value: 7 | 30 | 90) => void;
   onToggleNotification: () => void;
   onServerLlmChange: (patch: Partial<ServerLlmSettings>) => void;
+  onPrivacyMemoryEnabled: (enabled: boolean) => void;
+  onPrivacyMemoryRetention: (days: number) => void;
+  onPrivacyMemoryBlocking: (enabled: boolean) => void;
+  onPrivacyMemoryScoreBoost: (enabled: boolean) => void;
+  onDeletePrivacyMemory: () => void;
   onClearAll: () => void;
 }
 
@@ -40,6 +45,11 @@ export function SettingsPanel({
   onRetention,
   onToggleNotification,
   onServerLlmChange,
+  onPrivacyMemoryEnabled,
+  onPrivacyMemoryRetention,
+  onPrivacyMemoryBlocking,
+  onPrivacyMemoryScoreBoost,
+  onDeletePrivacyMemory,
   onClearAll,
 }: Props) {
   const retentionOptions = [7, 30, 90] as const;
@@ -146,6 +156,62 @@ export function SettingsPanel({
           })}
         </div>
       </div>
+      <div>
+        <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '15px', margin: '0 0 8px 0' }}>
+          <TbDatabase size={18} /> Privacy Memory
+        </h3>
+        <p className="muted" style={{ fontSize: '12px', margin: '0 0 12px 0', lineHeight: 1.5 }}>
+          개인정보 원문은 저장하지 않고, 위험 유형·문맥·조합 패턴만 저장합니다.
+        </p>
+        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', marginBottom: '12px' }}>
+          <span style={{ fontSize: '14px', fontWeight: 600 }}>Privacy Memory 사용</span>
+          <div className="custom-toggle">
+            <input
+              type="checkbox"
+              checked={settings.privacyMemoryEnabled}
+              onChange={() => onPrivacyMemoryEnabled(!settings.privacyMemoryEnabled)}
+              className="toggle-checkbox"
+            />
+            <span className="toggle-slider" />
+          </div>
+        </label>
+        <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 8px 0' }}>보관 기간 (일)</p>
+        <input
+          type="number"
+          min={1}
+          max={365}
+          value={settings.privacyMemoryRetentionDays}
+          onChange={(e) => onPrivacyMemoryRetention(Number(e.target.value) || 90)}
+          style={fieldInputStyle}
+        />
+        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', marginTop: '12px' }}>
+          <span style={{ fontSize: '13px' }}>점수 상향 사용</span>
+          <input
+            type="checkbox"
+            checked={settings.privacyMemoryUseForScoreBoost}
+            onChange={() => onPrivacyMemoryScoreBoost(!settings.privacyMemoryUseForScoreBoost)}
+          />
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', marginTop: '8px' }}>
+          <span style={{ fontSize: '13px' }}>업로드 차단 사용</span>
+          <input
+            type="checkbox"
+            checked={settings.privacyMemoryUseForBlocking}
+            onChange={() => onPrivacyMemoryBlocking(!settings.privacyMemoryUseForBlocking)}
+          />
+        </label>
+        <label
+          className="btn"
+          role="button"
+          tabIndex={0}
+          onClick={onDeletePrivacyMemory}
+          onKeyDown={(e) => e.key === 'Enter' && onDeletePrivacyMemory()}
+          style={{ display: 'block', textAlign: 'center', marginTop: '12px', padding: '10px' }}
+        >
+          Privacy Memory 전체 삭제
+        </label>
+      </div>
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '4px' }}>
         <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
           <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '15px', margin: 0 }}>

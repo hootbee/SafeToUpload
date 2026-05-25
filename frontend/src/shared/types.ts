@@ -8,11 +8,13 @@ export type ModelStatus = 'not-loaded' | 'loading' | 'ready' | 'error';
 
 export type StageStatus = 'pending' | 'running' | 'done';
 
+export type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
+
 export interface HistoryItem {
   id: string;
   date: string;
   platform: Platform;
-  riskLevel: 'low' | 'medium' | 'high';
+  riskLevel: RiskLevel;
   summary: string;
 }
 
@@ -58,8 +60,46 @@ export interface MaskRegion {
   source: 'auto' | 'user' | 'fallback';
 }
 
+export interface CategoryScores {
+  pii: number;
+  exif: number;
+  image: number;
+  context: number;
+}
+
+export interface ScoreBreakdown {
+  piiWeighted: number;
+  exifWeighted: number;
+  imageWeighted: number;
+  contextWeighted: number;
+  formula: string;
+}
+
+export interface RiskReasons {
+  pii: string[];
+  exif: string[];
+  image: string[];
+  context: string[];
+}
+
+export interface MemorySignal {
+  matched: boolean;
+  memoryMatchScore: number;
+  piiBoost: number;
+  contextBoost: number;
+  shouldBlock: boolean;
+  message?: string;
+}
+
 export interface RiskReportData {
   score: number;
+  riskLevel: RiskLevel;
+  categoryScores: CategoryScores;
+  scoreBreakdown: ScoreBreakdown;
+  riskReasons: RiskReasons;
+  escalationRules: string[];
+  memorySignal?: MemorySignal;
+  uploadBlocked?: boolean;
   piiItems: RiskDetail[];
   exifSummary: string;
   imageRiskSummary: string;
@@ -99,6 +139,10 @@ export interface SettingsState {
   retentionDays: 7 | 30 | 90;
   notifications: boolean;
   serverLlm: ServerLlmSettings;
+  privacyMemoryEnabled: boolean;
+  privacyMemoryRetentionDays: number;
+  privacyMemoryUseForBlocking: boolean;
+  privacyMemoryUseForScoreBoost: boolean;
 }
 
 export interface ExtensionMessage {

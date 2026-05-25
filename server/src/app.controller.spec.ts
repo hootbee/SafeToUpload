@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
+import { AiProxyService } from './ai-proxy/ai-proxy.service';
 import { AppController } from './app.controller';
 
 describe('AppController', () => {
@@ -13,6 +14,12 @@ describe('AppController', () => {
           provide: ConfigService,
           useValue: {
             get: () => 'development-server',
+          },
+        },
+        {
+          provide: AiProxyService,
+          useValue: {
+            resolveLlmTimeoutMs: () => 600_000,
           },
         },
       ],

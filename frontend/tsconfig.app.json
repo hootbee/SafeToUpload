@@ -19,7 +19,15 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+    "ignoreDeprecations": "6.0",
+    "paths": {
+      "@shared/risk-scoring": ["../shared/risk-scoring/index.ts"],
+      "@shared/risk-scoring/*": ["../shared/risk-scoring/*"],
+      "@shared/privacy-memory": ["../shared/privacy-memory/index.ts"],
+      "@shared/privacy-memory/*": ["../shared/privacy-memory/*"],
+      "@shared/analysis-prompt-schema": ["../shared/analysis-prompt-schema.ts"]
+    }
   },
-  "include": ["src"]
+  "include": ["src", "../shared/**/*.ts"]
 }

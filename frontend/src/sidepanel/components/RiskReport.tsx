@@ -1,5 +1,12 @@
+import { dedupeRiskReasons } from '@shared/risk-scoring';
 import type { RiskReportData } from '../../shared/types';
-import { TbReportAnalytics, TbMessageCode, TbHistory } from "react-icons/tb";
+import {
+  formatScoreFormulaKorean,
+  RISK_CATEGORY_LABEL,
+  RISK_LEVEL_LABEL,
+  type RiskCategoryKey,
+} from '../../shared/riskReportLabels';
+import { TbReportAnalytics, TbMessageCode, TbHistory, TbAlertTriangle } from "react-icons/tb";
 import { HiOutlineIdentification } from "react-icons/hi2";
 import { FiCamera } from "react-icons/fi";
 import { IoImageOutline } from "react-icons/io5";
@@ -12,32 +19,106 @@ interface Props {
   onOpenImageMasking: () => void;
 }
 
+function scoreColor(score: number): { color: string; bg: string } {
+  if (score >= 80) return { color: '#B91C1C', bg: '#FEE2E2' };
+  if (score >= 60) return { color: '#EF4444', bg: '#FEE2E2' };
+  if (score >= 35) return { color: '#F59E0B', bg: '#FEF3C7' };
+  return { color: '#10B981', bg: '#D1FAE5' };
+}
+
+const CATEGORY_KEYS: RiskCategoryKey[] = ['pii', 'exif', 'image', 'context'];
+
+const CATEGORY_WEIGHTS: Record<RiskCategoryKey, { weight: number; score: (r: RiskReportData) => number; contrib: (r: RiskReportData) => number }> = {
+  pii: { weight: 0.4, score: (r) => r.categoryScores.pii, contrib: (r) => r.scoreBreakdown.piiWeighted },
+  exif: { weight: 0.15, score: (r) => r.categoryScores.exif, contrib: (r) => r.scoreBreakdown.exifWeighted },
+  image: { weight: 0.3, score: (r) => r.categoryScores.image, contrib: (r) => r.scoreBreakdown.imageWeighted },
+  context: { weight: 0.15, score: (r) => r.categoryScores.context, contrib: (r) => r.scoreBreakdown.contextWeighted },
+};
+
 export function RiskReport({ report, onOpenDetail, onOpenRewrite, onOpenImageMasking }: Props) {
-  const isHighScore = report.score >= 70;
-  const scoreColor = isHighScore ? '#EF4444' : report.score >= 40 ? '#F59E0B' : '#10B981';
-  const scoreBg = isHighScore ? '#FEE2E2' : report.score >= 40 ? '#FEF3C7' : '#D1FAE5';
+  const colors = scoreColor(report.score);
+  const riskReasons = dedupeRiskReasons(report.riskReasons);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div className="report-scroll-area" style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxHeight: '684px', overflowY: 'auto', paddingRight: '8px', marginBottom: '16px'}}>
+        {report.uploadBlocked && (
+          <section className="card" style={{ border: '1px solid #fecaca', background: '#fef2f2' }}>
+            <p style={{ margin: 0, fontSize: '14px', color: '#b91c1c', display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+              <TbAlertTriangle size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
+              {report.memorySignal?.message ?? '반복 위험 패턴으로 업로드가 차단되었습니다.'}
+            </p>
+          </section>
+        )}
+
         <section className="card">
           <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '18px', margin: '0 0 16px 0' }}>
             <TbReportAnalytics size={18} /> 위험도 리포트
           </h2>
-          <div style={{ background: scoreBg, padding: '24px', borderRadius: '16px', textAlign: 'center' }}>
+          <div style={{ background: colors.bg, padding: '24px', borderRadius: '16px', textAlign: 'center' }}>
             <span style={{ fontSize: '16px', color: '#64748b', fontWeight: 600 }}>
-              종합 위험 점수
+              최종 위험도
             </span>
-            <div style={{ fontSize: '30px', fontWeight: 800, color: scoreColor, marginTop: '4px' }}>
+            <div style={{ fontSize: '30px', fontWeight: 800, color: colors.color, marginTop: '4px' }}>
               {report.score}
-              <span style={{ fontSize: '18px', color: '#94a3b8' }}>
-                /100
-              </span>
+              <span style={{ fontSize: '18px', color: '#94a3b8' }}> /100</span>
+            </div>
+            <div style={{ marginTop: '8px', fontSize: '14px', fontWeight: 700, color: colors.color }}>
+              {RISK_LEVEL_LABEL[report.riskLevel]}
             </div>
           </div>
         </section>
+
+        <section className="card">
+          <h3 style={{ fontSize: '16px', margin: '0 0 12px 0' }}>항목별 점수</h3>
+          <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '14px', lineHeight: 1.7 }}>
+            {CATEGORY_KEYS.map((key) => (
+              <li key={key}>
+                {RISK_CATEGORY_LABEL[key]}: {CATEGORY_WEIGHTS[key].score(report)}점 × {CATEGORY_WEIGHTS[key].weight} ={' '}
+                {CATEGORY_WEIGHTS[key].contrib(report)}
+              </li>
+            ))}
+          </ul>
+          <p className="muted" style={{ fontSize: '12px', margin: '12px 0 0 0' }}>
+            {formatScoreFormulaKorean(report.scoreBreakdown)}
+          </p>
+        </section>
+
+        {(riskReasons.pii.length > 0 ||
+          riskReasons.exif.length > 0 ||
+          riskReasons.image.length > 0 ||
+          riskReasons.context.length > 0) && (
+          <section className="card">
+            <h3 style={{ fontSize: '16px', margin: '0 0 12px 0' }}>주요 위험 원인</h3>
+            {CATEGORY_KEYS.map((key) =>
+              riskReasons[key].length > 0 ? (
+                <div key={key} style={{ marginBottom: '10px' }}>
+                  <strong style={{ fontSize: '13px' }}>{RISK_CATEGORY_LABEL[key]}</strong>
+                  <ul style={{ margin: '4px 0 0 0', paddingLeft: '18px', fontSize: '13px' }}>
+                    {riskReasons[key].map((r, i) => (
+                      <li key={`${key}-${i}`}>{r}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null,
+            )}
+          </section>
+        )}
+
+        {report.escalationRules.length > 0 && (
+          <section className="card">
+            <h3 style={{ fontSize: '16px', margin: '0 0 12px 0' }}>추가로 올린 위험도</h3>
+            <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '13px' }}>
+              {report.escalationRules.map((rule, i) => (
+                <li key={i}>{rule}</li>
+              ))}
+            </ul>
+          </section>
+        )}
+
       <section className="card">
         <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '16px', margin: '0 0 12px 0' }}>
-          <HiOutlineIdentification size={18} /> PII 항목
+          <HiOutlineIdentification size={18} /> 찾은 개인정보
         </h3>
         <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'nowrap', gap: '8px', alignItems: 'center', width: '100%', overflowX: 'auto', whiteSpace: 'nowrap', paddingBottom: '4px' }}>
           {report.piiItems.map((pii) => (
@@ -57,7 +138,7 @@ export function RiskReport({ report, onOpenDetail, onOpenRewrite, onOpenImageMas
       </section>
       <section className="card">
         <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '16px', margin: '0 0 12px 0' }}>
-          <FiCamera size={17} /> EXIF 카드
+          <FiCamera size={17} /> 사진·파일 숨은 정보
         </h3>
         <p className="muted" style={{ fontSize: '14px', margin: 0, lineHeight: 1.5 }}>
           {report.exifSummary}
@@ -65,7 +146,7 @@ export function RiskReport({ report, onOpenDetail, onOpenRewrite, onOpenImageMas
       </section>
       <section className="card">
         <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '16px', margin: '0 0 12px 0' }}>
-          <IoImageOutline size={18} /> 이미지 위험 카드
+          <IoImageOutline size={18} /> 이미지에서 보이는 위험
         </h3>
         <div style={{ marginBottom: '12px' }}>
           <ImagePreviewBox src={report.imagePreviewUrl} height={140} />
@@ -86,7 +167,7 @@ export function RiskReport({ report, onOpenDetail, onOpenRewrite, onOpenImageMas
       </section>
       <section className="card">
         <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '16px', margin: '0 0 12px 0' }}>
-          <TbMessageCode size={18} /> 컨텍스트 분석 카드
+          <TbMessageCode size={18} /> 글·게시 맥락
         </h3>
         <p className="muted" style={{ fontSize: '14px', margin: 0, lineHeight: 1.5 }}>
           {report.contextSummary}
@@ -94,37 +175,35 @@ export function RiskReport({ report, onOpenDetail, onOpenRewrite, onOpenImageMas
       </section>
       <section className="card">
         <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '16px', margin: '0 0 12px 0' }}>
-          <TbHistory size={18} /> 누적 패턴 메모리
+          <TbHistory size={18} /> 과거 패턴 기억
         </h3>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
-          {report.memoryPattern.frequencies.map((f) => (
-            <div
-              className="riskreport-bar"
-              key={f.label}
-              style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', minWidth: 0 }}
-            >
-              <span
-                style={{
-                  flexShrink: 0,
-                  whiteSpace: 'nowrap',
-                  color: '#64748b',
-                  lineHeight: 1,
-                }}
-              >
-                {f.label}
-              </span>
-              <div
-                style={{ flex: 1, minWidth: 0, height: '8px', overflow: 'hidden', display: 'flex', alignItems: 'center' }}
-                className="bar-track"
-              >
-                <div className="bar-fill" style={{ width: `${Math.min(100, f.value * 12)}%` }} />
-              </div>
+        {report.memorySignal?.matched ? (
+          <div style={{ fontSize: '14px', lineHeight: 1.6 }}>
+            <p style={{ margin: '0 0 8px 0' }}>
+              이전에 비슷한 위험 패턴이 있었습니다 (유사도 {report.memorySignal.memoryMatchScore}점)
+            </p>
+            <p className="muted" style={{ margin: 0, fontSize: '13px' }}>
+              개인정보 점수 +{report.memorySignal.piiBoost} · 게시 상황 점수 +{report.memorySignal.contextBoost}
+              {report.memorySignal.message ? ` — ${report.memorySignal.message}` : ''}
+            </p>
+          </div>
+        ) : (
+          <p className="muted" style={{ fontSize: '14px', margin: 0 }}>
+            과거 분석과 비슷한 반복 위험은 없습니다. 실제 연락처·주소 등 원문은 저장하지 않습니다.
+          </p>
+        )}
+        {report.memoryPattern.hasData && (
+          <div style={{ marginTop: '12px' }}>
+            <p className="muted" style={{ fontSize: '12px', margin: '0 0 8px 0' }}>이번에 찾은 개인정보 종류</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              {report.memoryPattern.frequencies.map((f) => (
+                <span key={f.label} className="btn" style={{ fontSize: '12px', padding: '4px 8px' }}>
+                  {f.label} ({f.value})
+                </span>
+              ))}
             </div>
-          ))}
-        </div>
-        <p className="muted" style={{ fontSize: '13px', background: '#f1f5f9', padding: '10px', borderRadius: '8px', margin: 0 }}>
-          <strong style={{ color: '#475569', marginRight: '8px' }}>핵심 키워드</strong> {report.memoryPattern.keywords.join(', ')}
-        </p>
+          </div>
+        )}
       </section>
       </div>
       <label 

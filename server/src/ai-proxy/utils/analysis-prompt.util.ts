@@ -1,3 +1,5 @@
+import { ANALYSIS_JSON_SCHEMA_BLOCK } from '../../../../shared/analysis-prompt-schema';
+
 export interface AnalysisPromptInput {
   platform: string;
   inputText?: string;
@@ -31,14 +33,5 @@ rewriteSuggestion 작성 규칙(매우 중요):
 - 수정은 해당 토큰만 일반화한다(예: 010-1234-5678 → 연락은 DM으로, 114동 403호 → 동·호는 비공개).
 - rewriteSuggestion 값에는 수정된 게시글 전문만 넣는다(지침·설명·대괄호 플레이스홀더 금지).
 
-JSON 스키마:
-{
-  "riskScore": 0,
-  "riskLevel": "low|medium|high|critical",
-  "piiItems": [{"type":"","label":"","text":"","severity":"","description":"","location":"","policyRef":""}],
-  "exifItems": [],
-  "imageRisks": [{"type":"face|license_plate|building_sign","label":"","severity":"","description":""}],
-  "contextResult": {"summary": "위험 요약 한두 문장"},
-  "rewriteSuggestion": ""
-}`;
+${ANALYSIS_JSON_SCHEMA_BLOCK}`;
 }

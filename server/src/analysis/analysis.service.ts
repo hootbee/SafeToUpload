@@ -8,6 +8,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AiProxyService } from '../ai-proxy/ai-proxy.service';
 import { CreateAnalysisDto } from './dto/create-analysis.dto';
 import { RunAnalysisDto } from './dto/run-analysis.dto';
+import { PrivacyMemoryService } from '../privacy-memory/privacy-memory.service';
+import { SettingsService } from '../settings/settings.service';
 import { StorageService } from '../storage/storage.service';
 import { AnalysisRunResult } from './types/analysis.types';
 
@@ -17,6 +19,8 @@ export class AnalysisService {
     private readonly prisma: PrismaService,
     private readonly aiProxyService: AiProxyService,
     private readonly storageService: StorageService,
+    private readonly privacyMemoryService: PrivacyMemoryService,
+    private readonly settingsService: SettingsService,
   ) {}
 
   async create(dto: CreateAnalysisDto) {
@@ -49,7 +53,7 @@ export class AnalysisService {
     await this.prisma.analysisRecord.update({ where: { id }, data: { status: AnalysisStatus.PROCESSING } });
 
     const inferenceMode = (record.inferenceMode as InferenceMode) || InferenceMode.SERVER;
-    const aiResult = await this.aiProxyService.analyze(
+    let aiResult = await this.aiProxyService.analyze(
       {
         sourceType: record.sourceType as any,
         platform: record.platform as any,
@@ -62,6 +66,20 @@ export class AnalysisService {
       dto.llm,
     );
 
+    const userSettings = await this.settingsService.getSettings();
+    const memorySettings = this.settingsService.getPrivacyMemorySettingsFromRecord({
+      privacyMemoryEnabled: userSettings.privacyMemoryEnabled ?? true,
+      privacyMemoryRetentionDays: userSettings.privacyMemoryRetentionDays ?? 90,
+      privacyMemoryUseForBlocking: userSettings.privacyMemoryUseForBlocking ?? true,
+      privacyMemoryUseForScoreBoost: userSettings.privacyMemoryUseForScoreBoost ?? true,
+    });
+
+    aiResult = await this.privacyMemoryService.matchAndBoost(
+      aiResult,
+      memorySettings,
+      record.platform,
+    );
+
     const piiTypes = Array.from(
       new Set((aiResult.piiItems as Array<{ type?: string }>).map((item) => item.type).filter(Boolean) as string[]),
     );
@@ -70,13 +88,22 @@ export class AnalysisService {
 
     const toJson = (value: unknown): Prisma.InputJsonValue => value as Prisma.InputJsonValue;
 
+    const contextResultPayload = {
+      ...aiResult.contextResult,
+      categoryScores: aiResult.categoryScores,
+      scoreBreakdown: aiResult.scoreBreakdown,
+      riskReasons: aiResult.riskReasons,
+      escalationRules: aiResult.escalationRules,
+      memorySignal: aiResult.memorySignal,
+    };
+
     await this.prisma.analysisResult.upsert({
       where: { analysisId: id },
       update: {
         piiItems: toJson(aiResult.piiItems),
         exifItems: toJson(aiResult.exifItems),
         imageRisks: toJson(aiResult.imageRisks),
-        contextResult: toJson(aiResult.contextResult),
+        contextResult: toJson(contextResultPayload),
         rewriteSuggestion: aiResult.rewriteSuggestion,
         rawAiResponse: toJson(
           this.storageService.getPersistPolicy().persistRawInput ? aiResult.rawAiResponse : { mode: 'redacted' },
@@ -87,13 +114,15 @@ export class AnalysisService {
         piiItems: toJson(aiResult.piiItems),
         exifItems: toJson(aiResult.exifItems),
         imageRisks: toJson(aiResult.imageRisks),
-        contextResult: toJson(aiResult.contextResult),
+        contextResult: toJson(contextResultPayload),
         rewriteSuggestion: aiResult.rewriteSuggestion,
         rawAiResponse: toJson(
           this.storageService.getPersistPolicy().persistRawInput ? aiResult.rawAiResponse : { mode: 'redacted' },
         ),
       },
     });
+
+    await this.privacyMemoryService.upsertAfterAnalysis(aiResult, memorySettings);
 
     const updated = await this.prisma.analysisRecord.update({
       where: { id },

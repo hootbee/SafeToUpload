@@ -2,11 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { API_BASE_URL, DEFAULT_SERVER_LLM_CHAT_URL, DEFAULT_SERVER_LLM_MODEL } from '../config/models';
 import * as api from '../services/apiClient';
 import { mapAiResponseToReport, mapHistoryToItem, mapRecordToReport } from '../services/analysisMapper';
+import { applyLocalPrivacyMemory } from '../services/privacyMemoryClient';
 import { detectMaskRegionsFromFile } from '../services/imageDetectService';
 import { inferMaskCategoriesFromContext } from '../services/maskCategoryUtils';
 import { applyMasksToFile, suggestedMaskedFileName } from '../services/imageMaskService';
 import { isLocalModelReady, loadLocalModel, runLocalAnalysis } from '../services/localAiService';
-import { ANALYSIS_STAGE_TITLES, ONBOARDING_KEY } from '../shared/constants';
+import {
+  ANALYSIS_STAGE_TITLES,
+  getAnalysisStageTitles,
+  LOCAL_MODEL_LOAD_STAGE_TITLE,
+  ONBOARDING_KEY,
+} from '../shared/constants';
 import type {
   AnalysisInput,
   AnalysisStage,
@@ -39,8 +45,8 @@ const hasChromeRuntime = typeof chrome !== 'undefined' && !!chrome.runtime;
 
 type ViewMode = 'home' | 'analysis-running' | 'report' | 'rewrite' | 'image-masking';
 
-const createInitialStages = (): AnalysisStage[] =>
-  ANALYSIS_STAGE_TITLES.map((title, idx) => ({
+const createStagesFromTitles = (titles: string[]): AnalysisStage[] =>
+  titles.map((title, idx) => ({
     id: `stage-${idx + 1}`,
     title,
     status: 'pending',
@@ -53,6 +59,10 @@ const defaultSettings = (): SettingsState => ({
   sensitivity: 6,
   retentionDays: 30,
   notifications: true,
+  privacyMemoryEnabled: true,
+  privacyMemoryRetentionDays: 90,
+  privacyMemoryUseForBlocking: false,
+  privacyMemoryUseForScoreBoost: true,
   serverLlm: {
     chatUrl: DEFAULT_SERVER_LLM_CHAT_URL,
     apiKey: '',
@@ -85,9 +95,10 @@ export function SidePanelApp() {
   const [text, setText] = useState('');
   const [platform, setPlatform] = useState<Platform>('instagram');
   const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [historyFilter, setHistoryFilter] = useState<'all' | 'low' | 'medium' | 'high'>('all');
+  const [historyFilter, setHistoryFilter] = useState<'all' | 'low' | 'medium' | 'high' | 'critical'>('all');
   const [settings, setSettings] = useState<SettingsState>(defaultSettings);
-  const [stages, setStages] = useState(createInitialStages());
+  const [stages, setStages] = useState(() => createStagesFromTitles(getAnalysisStageTitles('local')));
+  const analysisStageOrderRef = useRef<string[]>([...ANALYSIS_STAGE_TITLES]);
   const [currentStageTitle, setCurrentStageTitle] = useState('대기');
   const [analysisProgress, setAnalysisProgress] = useState(0);
   const [report, setReport] = useState<RiskReportData | null>(null);
@@ -204,6 +215,10 @@ export function SidePanelApp() {
               ? remote.retentionDays
               : 30) as 7 | 30 | 90,
             notifications: remote.notificationEnabled,
+            privacyMemoryEnabled: remote.privacyMemoryEnabled ?? true,
+            privacyMemoryRetentionDays: remote.privacyMemoryRetentionDays ?? 90,
+            privacyMemoryUseForBlocking: remote.privacyMemoryUseForBlocking ?? true,
+            privacyMemoryUseForScoreBoost: remote.privacyMemoryUseForScoreBoost ?? true,
           }),
         );
       } catch {
@@ -238,27 +253,50 @@ export function SidePanelApp() {
     return history.filter((h) => h.riskLevel === historyFilter);
   }, [history, historyFilter]);
 
+  const hasAnalysisInput = text.trim().length > 0 || files.length > 0;
   const canStartAnalysis =
-    settings.inferenceMode === 'server' ? true : modelStatus === 'ready';
+    hasAnalysisInput &&
+    (settings.inferenceMode === 'server' || modelStatus !== 'loading');
 
   const startOnboarding = () => {
     localStorage.setItem(ONBOARDING_KEY, 'true');
     setOnboardingDone(true);
   };
 
-  const loadModel = async () => {
-    if (settings.inferenceMode !== 'local') return;
+  const ensureLocalModelLoaded = async () => {
+    const loadStage = LOCAL_MODEL_LOAD_STAGE_TITLE;
+
+    if (isLocalModelReady()) {
+      setModelStatus('ready');
+      updateStage(loadStage, 'done', '모델이 이미 준비되어 있습니다.', 18);
+      return;
+    }
+
     setModelStatus('loading');
     setModelProgress(0);
     setModelError('');
+    updateStage(loadStage, 'running', 'Gemma4 E4B 모델 다운로드·로드 시작...', 4);
+
     try {
       await loadLocalModel((progress) => {
+        if (analysisAbortedRef.current) return;
         setModelProgress(progress);
+        updateStage(
+          loadStage,
+          'running',
+          progress >= 100 ? '모델 준비 완료' : `AI 모델 로드 중... ${progress}%`,
+          Math.min(18, 4 + Math.round(progress * 0.14)),
+        );
       });
+      if (analysisAbortedRef.current) {
+        throw new Error('분석이 취소되었습니다.');
+      }
       setModelStatus('ready');
+      updateStage(loadStage, 'done', '모델 준비 완료', 18);
     } catch (error) {
       setModelStatus('error');
       setModelError((error as Error).message);
+      throw error;
     }
   };
 
@@ -272,14 +310,16 @@ export function SidePanelApp() {
     if (progressHint != null) {
       setAnalysisProgress((prev) => Math.max(prev, Math.min(99, progressHint)));
     } else if (status === 'done') {
-      const stageIdx = ANALYSIS_STAGE_TITLES.indexOf(title);
-      const doneProgress = stageIdx >= 0 ? 12 + (stageIdx + 1) * 22 : 90;
+      const order = analysisStageOrderRef.current;
+      const stageIdx = order.indexOf(title);
+      const doneProgress =
+        stageIdx >= 0 ? 12 + Math.round(((stageIdx + 1) / order.length) * 86) : 90;
       setAnalysisProgress((prev) => Math.max(prev, Math.min(99, doneProgress)));
     }
 
     setStages((prev) =>
       prev.map((stage) => {
-        const order = ANALYSIS_STAGE_TITLES;
+        const order = analysisStageOrderRef.current;
         const activeIdx = order.indexOf(title);
         const stageIdx = order.indexOf(stage.title);
 
@@ -336,7 +376,7 @@ export function SidePanelApp() {
         id: `h-${Date.now()}`,
         date: new Date().toISOString().slice(0, 10),
         platform,
-        riskLevel: result.score >= 70 ? 'high' : result.score >= 40 ? 'medium' : 'low',
+        riskLevel: result.riskLevel,
         summary,
       },
       ...prev,
@@ -352,7 +392,7 @@ export function SidePanelApp() {
   };
 
   const runLocalAnalysisFlow = async (input: AnalysisInput) => {
-    const stageOrder = ANALYSIS_STAGE_TITLES;
+    const stageOrder: string[] = [...ANALYSIS_STAGE_TITLES];
     let stageIndex = 0;
 
     const ai = await runLocalAnalysis(input, (title, log, progress) => {
@@ -370,22 +410,24 @@ export function SidePanelApp() {
 
     if (analysisAbortedRef.current) return;
 
+    const aiWithMemory = await applyLocalPrivacyMemory(ai, input.platform, settings);
+
     let detections: Awaited<ReturnType<typeof detectMaskRegionsFromFile>> = [];
     const gemmaCategories = input.imageFile
-      ? inferMaskCategoriesFromContext(ai.imageRisks, input.text)
+      ? inferMaskCategoriesFromContext(aiWithMemory.imageRisks, input.text)
       : new Set<MaskCategory>();
     if (input.imageFile) {
       updateStage('이미지 분석', 'running', '마스킹 영역 자동 탐지(OwlViT) 시작...', 68);
       detections = await resolveImageDetections(input.imageFile, gemmaCategories);
     }
 
-    stageOrder.forEach((title) => updateStage(title, 'done', `${title} 완료`));
+    analysisStageOrderRef.current.forEach((title) => updateStage(title, 'done', `${title} 완료`));
     setAnalysisProgress(100);
 
-    const result = mapAiResponseToReport(ai, input, detections);
+    const result = mapAiResponseToReport(aiWithMemory, input, detections);
     const summaryText =
-      typeof ai.contextResult.summary === 'string'
-        ? ai.contextResult.summary
+      typeof aiWithMemory.contextResult.summary === 'string'
+        ? aiWithMemory.contextResult.summary
         : result.contextSummary;
     finishReport(result, summaryText, input.imageFile);
   };
@@ -435,7 +477,7 @@ export function SidePanelApp() {
       detections = await resolveImageDetections(input.imageFile, gemmaCategories);
     }
 
-    ANALYSIS_STAGE_TITLES.forEach((title) => updateStage(title, 'done', `${title} 완료`));
+    analysisStageOrderRef.current.forEach((title) => updateStage(title, 'done', `${title} 완료`));
     setAnalysisProgress(100);
 
     const result = mapRecordToReport(record, input.platform, input.imageName, detections);
@@ -447,11 +489,13 @@ export function SidePanelApp() {
     setAnalysisError('');
     analysisAbortedRef.current = false;
     activeAnalysisIdRef.current = null;
+    const stageOrder = getAnalysisStageTitles(settings.inferenceMode);
+    analysisStageOrderRef.current = stageOrder;
+
     setViewMode('analysis-running');
-    setStages(createInitialStages());
+    setStages(createStagesFromTitles(stageOrder));
     setCurrentStageTitle('시작');
     setAnalysisProgress(2);
-    updateStage('PII 탐지', 'running', '', 4);
 
     const imageFile = files[0] ?? undefined;
     if (imageFile) {
@@ -467,8 +511,11 @@ export function SidePanelApp() {
 
     try {
       if (settings.inferenceMode === 'local') {
+        await ensureLocalModelLoaded();
+        if (analysisAbortedRef.current) return;
         await runLocalAnalysisFlow(input);
       } else {
+        updateStage('PII 탐지', 'running', '', 4);
         await runServerAnalysisFlow(input);
       }
     } catch (error) {
@@ -653,8 +700,6 @@ export function SidePanelApp() {
                     status={modelStatus}
                     progress={modelProgress}
                     errorMessage={modelError}
-                    onLoadModel={loadModel}
-                    onRetry={loadModel}
                   />
                 ) : (
                   <section className="card model-banner">
@@ -672,7 +717,19 @@ export function SidePanelApp() {
 
                 {analysisError && <p className="muted" style={{ color: '#c81e1e' }}>{analysisError}</p>}
 
-                <button className="btn primary" type="button" onClick={runAnalysis} disabled={!canStartAnalysis}>
+                <button
+                  className="btn primary"
+                  type="button"
+                  onClick={runAnalysis}
+                  disabled={!canStartAnalysis}
+                  title={
+                    !hasAnalysisInput
+                      ? '분석할 텍스트 또는 이미지를 입력하세요'
+                      : modelStatus === 'loading'
+                        ? '모델을 불러오는 중입니다'
+                        : undefined
+                  }
+                >
                   개인정보 분석 시작
                 </button>
               </>
@@ -746,6 +803,46 @@ export function SidePanelApp() {
                 serverLlm: { ...settings.serverLlm, ...patch },
               };
               setSettings(next);
+            }}
+            onPrivacyMemoryEnabled={(enabled) => {
+              const next = { ...settings, privacyMemoryEnabled: enabled };
+              setSettings(next);
+              void api.updatePrivacyMemorySettings({ privacyMemoryEnabled: enabled }).catch(() => undefined);
+            }}
+            onPrivacyMemoryRetention={(days) => {
+              const next = { ...settings, privacyMemoryRetentionDays: days };
+              setSettings(next);
+              void api
+                .updatePrivacyMemorySettings({ privacyMemoryRetentionDays: days })
+                .catch(() => undefined);
+            }}
+            onPrivacyMemoryBlocking={(enabled) => {
+              const next = { ...settings, privacyMemoryUseForBlocking: enabled };
+              setSettings(next);
+              void api
+                .updatePrivacyMemorySettings({ privacyMemoryUseForBlocking: enabled })
+                .catch(() => undefined);
+            }}
+            onPrivacyMemoryScoreBoost={(enabled) => {
+              const next = { ...settings, privacyMemoryUseForScoreBoost: enabled };
+              setSettings(next);
+              void api
+                .updatePrivacyMemorySettings({ privacyMemoryUseForScoreBoost: enabled })
+                .catch(() => undefined);
+            }}
+            onDeletePrivacyMemory={async () => {
+              try {
+                if (settings.inferenceMode === 'server') {
+                  await api.deleteAllPrivacyMemory();
+                } else {
+                  const { deleteAllPrivacyMemory: clearLocalMemory } = await import(
+                    '../services/privacyMemoryClient'
+                  );
+                  await clearLocalMemory();
+                }
+              } catch {
+                /* ignore */
+              }
             }}
             onClearAll={() => setShowDeleteDialog(true)}
           />

@@ -76,6 +76,22 @@ python3 server/scripts/ai-server-mock.py
 # server/.env → AI_SERVER_URL=http://localhost:8000, AI_USE_MOCK_FALLBACK=false
 ```
 
+## 위험도 산출 (Deterministic Scoring)
+
+최종 위험 점수는 LLM 단일 값이 아니라 아래 가중합으로 계산합니다.
+
+- PII 40% · Image 30% · EXIF 15% · Context 15%
+- 공통 로직: [`shared/risk-scoring/`](shared/risk-scoring/)
+- 등급: 0–34 low · 35–59 medium · 60–79 high · 80–100 critical
+- 고위험 케이스는 강제 상향(escalation) 규칙 적용
+
+## Privacy Memory
+
+- 개인정보 **원문은 저장하지 않고** 유형·문맥·위험 조합 패턴만 저장
+- 서버: PostgreSQL `PrivacyMemoryProfile` (개발용 adapter)
+- 로컬: IndexedDB (`safetoupload_privacy_memory`)
+- API: `GET/DELETE /privacy-memory`, `PATCH /settings/privacy-memory`
+
 ## 문서
 - 백엔드 상세 문서: [`server/README.md`](./server/README.md)
 - 이미지 마스킹 구현 방향: [`docs/image-masking.md`](./docs/image-masking.md)
