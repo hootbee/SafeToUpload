@@ -6,6 +6,14 @@ import { applyLocalPrivacyMemory } from '../services/privacyMemoryClient';
 import { detectMaskRegionsFromFile } from '../services/imageDetectService';
 import { inferMaskCategoriesFromContext } from '../services/maskCategoryUtils';
 import { applyMasksToFile, suggestedMaskedFileName } from '../services/imageMaskService';
+import {
+  clearStoredAnalysisHistory,
+  getStoredAnalysisEntry,
+  listStoredAnalysisEntries,
+  mergeHistoryItems,
+  saveAnalysisEntry,
+  storedEntryToHistoryItem,
+} from '../services/analysisHistoryStorage';
 import { isLocalModelReady, loadLocalModel, runLocalAnalysis } from '../services/localAiService';
 import {
   ANALYSIS_STAGE_TITLES,
@@ -157,13 +165,16 @@ export function SidePanelApp() {
   );
 
   const refreshHistory = useCallback(async () => {
+    const stored = await listStoredAnalysisEntries(settings.retentionDays);
+    const localItems = stored.map(storedEntryToHistoryItem);
     try {
       const records = await api.fetchHistory();
-      setHistory(records.map(mapHistoryToItem));
+      const serverItems = records.map(mapHistoryToItem);
+      setHistory(mergeHistoryItems(serverItems, localItems));
     } catch {
-      // 백엔드 미연결 시 로컬 상태 유지
+      setHistory(localItems);
     }
-  }, []);
+  }, [settings.retentionDays]);
 
   const persistSettings = useCallback(async (next: SettingsState) => {
     try {
@@ -366,25 +377,65 @@ export function SidePanelApp() {
     [revokeMaskedPreviewUrl],
   );
 
-  const finishReport = (result: RiskReportData, summary: string, imageFile?: File) => {
+  const finishReport = (
+    result: RiskReportData,
+    summary: string,
+    imageFile?: File,
+    recordId?: string,
+  ) => {
     const file = imageFile ?? files[0] ?? null;
+    const id = recordId ?? `local-${Date.now()}`;
     analysisImageFileRef.current = file;
     setMaskError('');
-    setReport(attachImagePreview(result, file ?? undefined));
-    setHistory((prev) => [
-      {
-        id: `h-${Date.now()}`,
-        date: new Date().toISOString().slice(0, 10),
-        platform,
-        riskLevel: result.riskLevel,
-        summary,
-      },
-      ...prev,
-    ]);
+    const withPreview = attachImagePreview(result, file ?? undefined);
+    setReport(withPreview);
+
+    void saveAnalysisEntry({
+      id,
+      platform,
+      inferenceMode: settings.inferenceMode,
+      summary,
+      report: withPreview,
+    }).then(() => refreshHistory());
+
     setMaskPreviewApplied(false);
     setViewMode('report');
-    void refreshHistory();
   };
+
+  const openHistoryReport = useCallback(async (id: string) => {
+    setAnalysisError('');
+    const stored = await getStoredAnalysisEntry(id);
+    if (stored) {
+      analysisImageFileRef.current = null;
+      setReport(stored.report);
+      setMaskPreviewApplied(false);
+      setViewMode('report');
+      setTab('home');
+      return;
+    }
+
+    try {
+      const record = await api.getAnalysis(id);
+      const recordPlatform = (record.platform as Platform) ?? 'other';
+      const result = mapRecordToReport(
+        {
+          inputText: record.inputText,
+          riskScore: record.riskScore,
+          summary: record.summary,
+          result: record.result,
+        },
+        recordPlatform,
+        record.imagePath ?? undefined,
+      );
+      analysisImageFileRef.current = null;
+      setReport(result);
+      setMaskPreviewApplied(false);
+      setViewMode('report');
+      setTab('home');
+    } catch (error) {
+      setAnalysisError((error as Error).message || '분석 결과를 불러오지 못했습니다.');
+    }
+  }, []);
 
   const openImageMasking = () => {
     setMaskPreviewApplied(false);
@@ -481,7 +532,7 @@ export function SidePanelApp() {
     setAnalysisProgress(100);
 
     const result = mapRecordToReport(record, input.platform, input.imageName, detections);
-    finishReport(result, record.summary ?? result.contextSummary, input.imageFile);
+    finishReport(result, record.summary ?? result.contextSummary, input.imageFile, created.id);
   };
 
   const runAnalysis = async () => {
@@ -543,7 +594,10 @@ export function SidePanelApp() {
     } catch {
       /* local only */
     }
+    await clearStoredAnalysisHistory();
     setHistory([]);
+    setReport(null);
+    setViewMode('home');
     setShowDeleteDialog(false);
   };
 
@@ -770,7 +824,12 @@ export function SidePanelApp() {
         )}
 
         {tab === 'history' && (
-          <HistoryList items={filteredHistory} filter={historyFilter} onFilter={setHistoryFilter} />
+          <HistoryList
+            items={filteredHistory}
+            filter={historyFilter}
+            onFilter={setHistoryFilter}
+            onSelectItem={(id) => void openHistoryReport(id)}
+          />
         )}
 
         {tab === 'settings' && (
