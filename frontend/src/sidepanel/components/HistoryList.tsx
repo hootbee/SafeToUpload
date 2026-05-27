@@ -16,6 +16,11 @@ interface FilterOption {
   color?: string; 
 }
 
+function formatHistoryRiskScore(score: number | null | undefined): string {
+  if (score == null || Number.isNaN(score)) return '점수 없음';
+  return `위험도 ${Math.round(score)}점`;
+}
+
 export function HistoryList({ items, filter, onFilter, onSelectItem }: Props) {
   const filterOptions: FilterOption[] = [
     { key: 'all', label: '전체 보기', color: '#3182F6' },
@@ -56,17 +61,7 @@ export function HistoryList({ items, filter, onFilter, onSelectItem }: Props) {
           </label>
         ))}
       </div>
-      <div 
-        className="history-scroll-area"
-        style={{ 
-          display: 'flex', 
-          flexDirection: 'column', 
-          gap: '12px',
-          maxHeight: '628px',
-          overflowY: 'auto',
-          paddingRight: '8px'
-        }}
-      >
+      <div className="history-scroll-area">
         {items.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8', fontSize: '14px' }}>
             해당하는 분석 이력이 없습니다.
@@ -126,7 +121,7 @@ export function HistoryList({ items, filter, onFilter, onSelectItem }: Props) {
                   </span>
                 </div>
                 <p style={{ margin: 0, fontSize: '14px', color: '#334155', lineHeight: 1.5, wordBreak: 'keep-all' }}>
-                  {item.summary}
+                  {formatHistoryRiskScore(item.riskScore)}
                 </p>
               </article>
             );

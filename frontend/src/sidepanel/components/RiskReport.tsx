@@ -13,6 +13,8 @@ import { ImagePreviewBox } from './ImagePreviewBox';
 
 interface Props {
   report: RiskReportData;
+  /** 분석 이력에서 연 리포트 (원본 이미지·게시 텍스트 없음) */
+  isHistoryView?: boolean;
   onOpenDetail: (id: string) => void;
   onOpenRewrite: () => void;
   onOpenImageMasking: () => void;
@@ -34,13 +36,19 @@ const CATEGORY_WEIGHTS: Record<RiskCategoryKey, { weight: number; score: (r: Ris
   context: { weight: 0.15, score: (r) => r.categoryScores.context, contrib: (r) => r.scoreBreakdown.contextWeighted },
 };
 
-export function RiskReport({ report, onOpenDetail, onOpenRewrite, onOpenImageMasking }: Props) {
+export function RiskReport({
+  report,
+  isHistoryView = false,
+  onOpenDetail,
+  onOpenRewrite,
+  onOpenImageMasking,
+}: Props) {
   const colors = scoreColor(report.score);
   const riskReasons = dedupeRiskReasons(report.riskReasons);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div className="report-scroll-area" style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxHeight: '684px', overflowY: 'auto', paddingRight: '8px', marginBottom: '16px'}}>
+    <div className="report-root">
+      <div className="report-scroll-area">
         {report.uploadBlocked && (
           <section className="card" style={{ border: '1px solid #fecaca', background: '#fef2f2' }}>
             <p style={{ margin: 0, fontSize: '14px', color: '#b91c1c', display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
@@ -144,22 +152,26 @@ export function RiskReport({ report, onOpenDetail, onOpenRewrite, onOpenImageMas
         <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '16px', margin: '0 0 12px 0' }}>
           <IoImageOutline size={18} /> 이미지에서 보이는 위험
         </h3>
-        <div style={{ marginBottom: '12px' }}>
-          <ImagePreviewBox src={report.imagePreviewUrl} height={140} />
-        </div>
-        <p className="muted" style={{ fontSize: '14px', marginBottom: '5px', lineHeight: 1.5 }}>
+        {!isHistoryView && (
+          <div style={{ marginBottom: '12px' }}>
+            <ImagePreviewBox src={report.imagePreviewUrl} height={140} />
+          </div>
+        )}
+        <p className="muted" style={{ fontSize: '14px', margin: 0, marginBottom: isHistoryView ? 0 : '5px', lineHeight: 1.5 }}>
           {report.imageRiskSummary}
         </p>
-        <label 
-          className="btn" 
-          role="button" 
-          tabIndex={0} 
-          onClick={onOpenImageMasking} 
-          style={{ padding: '8px', textAlign: 'center' }}
-          onKeyDown={(e) => e.key === 'Enter' && onOpenImageMasking()}
-        >
-          이미지 마스킹
-        </label>
+        {!isHistoryView && (
+          <label
+            className="btn"
+            role="button"
+            tabIndex={0}
+            onClick={onOpenImageMasking}
+            style={{ padding: '8px', textAlign: 'center' }}
+            onKeyDown={(e) => e.key === 'Enter' && onOpenImageMasking()}
+          >
+            이미지 마스킹
+          </label>
+        )}
       </section>
       <section className="card">
         <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '16px', margin: '0 0 12px 0' }}>
@@ -194,16 +206,18 @@ export function RiskReport({ report, onOpenDetail, onOpenRewrite, onOpenImageMas
         )}
       </section>
       </div>
-      <label 
-        className="btn primary" 
-        role="button" 
-        tabIndex={0} 
-        onClick={onOpenRewrite} 
-        style={{ padding: '14px', textAlign: 'center', marginTop: '8px' }}
-        onKeyDown={(e) => e.key === 'Enter' && onOpenRewrite()}
-      >
-        텍스트 수정 제안
-      </label>
+      {!isHistoryView && (
+        <label
+          className="btn primary"
+          role="button"
+          tabIndex={0}
+          onClick={onOpenRewrite}
+          style={{ padding: '14px', textAlign: 'center', flexShrink: 0 }}
+          onKeyDown={(e) => e.key === 'Enter' && onOpenRewrite()}
+        >
+          텍스트 수정 제안
+        </label>
+      )}
     </div>
   );
 }

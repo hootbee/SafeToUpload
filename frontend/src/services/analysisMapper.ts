@@ -484,6 +484,7 @@ export function mapHistoryToItem(record: {
   id: string;
   platform: string;
   riskLevel: string | null;
+  riskScore?: number | null;
   summary: string | null;
   createdAt: string;
 }) {
@@ -493,5 +494,6 @@ export function mapHistoryToItem(record: {
     platform: record.platform as Platform,
     riskLevel: (record.riskLevel ?? 'low') as import('../shared/types').RiskLevel,
     summary: record.summary ?? '분석 요약 없음',
+    riskScore: record.riskScore ?? null,
   };
 }

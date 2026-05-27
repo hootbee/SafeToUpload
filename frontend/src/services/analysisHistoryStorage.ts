@@ -69,6 +69,7 @@ export function storedEntryToHistoryItem(entry: StoredAnalysisEntry): HistoryIte
     platform: entry.platform,
     riskLevel: entry.riskLevel,
     summary: entry.summary,
+    riskScore: entry.report.score ?? null,
   };
 }
 

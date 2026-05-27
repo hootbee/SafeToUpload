@@ -23,17 +23,26 @@
   box-sizing: border-box;
 }
 
-body {
+html,
+body,
+#root {
+  height: 100%;
   margin: 0;
-  -webkit-font-smoothing: antialiased;
 }
 
-/* 전체 패널 스타일 */
+body {
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* 전체 패널 스타일 — Chrome 사이드 패널 실제 높이에 맞춤 */
 .panel-root {
   width: 100%;
   min-width: 360px;
   max-width: 420px;
-  min-height: 100vh;
+  height: 100%;
+  min-height: 100dvh;
+  max-height: 100dvh;
   margin: 0 auto;
   background: var(--color-bg-base);
   border-left: 1px solid var(--color-border);
@@ -41,6 +50,7 @@ body {
   display: flex;
   flex-direction: column;
   position: relative;
+  overflow: hidden;
 }
 
 .panel-header {
@@ -66,12 +76,41 @@ body {
 }
 
 .panel-content {
+  flex: 1;
+  min-height: 0;
   padding: 16px;
+  padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding-bottom: 80px;
+  overflow: hidden;
+}
+
+/** 탭 본문 — 남은 세로 공간만 스크롤 */
+.panel-scroll-fill {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.report-root {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: min-content;
+}
+
+.report-scroll-area,
+.history-scroll-area {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: min-content;
 }
 
 /* 내부 컴포넌트 스타일 */
@@ -571,22 +610,26 @@ h2 {
 }
 
 /* 스크롤바 디자인 */
+.panel-scroll-fill::-webkit-scrollbar,
 .history-scroll-area::-webkit-scrollbar,
 .report-scroll-area::-webkit-scrollbar {
   width: 6px;
 }
 
+.panel-scroll-fill::-webkit-scrollbar-track,
 .history-scroll-area::-webkit-scrollbar-track,
 .report-scroll-area::-webkit-scrollbar-track {
   background: transparent;
 }
 
+.panel-scroll-fill::-webkit-scrollbar-thumb,
 .history-scroll-area::-webkit-scrollbar-thumb,
 .report-scroll-area::-webkit-scrollbar-thumb {
   background: #cbd5e1;
   border-radius: 10px;
 }
 
+.panel-scroll-fill::-webkit-scrollbar-thumb:hover,
 .history-scroll-area::-webkit-scrollbar-thumb:hover,
 .report-scroll-area::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;

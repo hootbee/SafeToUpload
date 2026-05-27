@@ -142,6 +142,7 @@ export function SidePanelApp() {
   const [currentStageTitle, setCurrentStageTitle] = useState('대기');
   const [analysisProgress, setAnalysisProgress] = useState(0);
   const [report, setReport] = useState<RiskReportData | null>(null);
+  const [isHistoryView, setIsHistoryView] = useState(false);
   const [selectedRiskId, setSelectedRiskId] = useState<string | null>(null);
 
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -431,11 +432,13 @@ export function SidePanelApp() {
     }).then(() => refreshHistory());
 
     setMaskPreviewApplied(false);
+    setIsHistoryView(false);
     setViewMode('report');
   };
 
   const openHistoryReport = useCallback(async (id: string) => {
     setAnalysisError('');
+    setIsHistoryView(true);
     const stored = await getStoredAnalysisEntry(id);
     if (stored) {
       analysisImageFileRef.current = null;
@@ -595,6 +598,7 @@ export function SidePanelApp() {
   const runAnalysis = async () => {
     if (!canStartAnalysis) return;
     setAnalysisError('');
+    setIsHistoryView(false);
     analysisAbortedRef.current = false;
     activeAnalysisIdRef.current = null;
     const stageOrder = getAnalysisStageTitles(settings.inferenceMode);
@@ -653,6 +657,7 @@ export function SidePanelApp() {
     await clearStoredAnalysisHistory();
     setHistory([]);
     setReport(null);
+    setIsHistoryView(false);
     setViewMode('home');
     setShowDeleteDialog(false);
   };
@@ -814,7 +819,9 @@ export function SidePanelApp() {
           <h1 className="logo-title">AI PRIVACY GUARD</h1>
         </header>
         <main className="panel-content">
-          <OnboardingPanel onStart={startOnboarding} />
+          <div className="panel-scroll-fill">
+            <OnboardingPanel onStart={startOnboarding} />
+          </div>
         </main>
       </div>
     );
@@ -858,6 +865,7 @@ export function SidePanelApp() {
       </header>
 
       <main className="panel-content">
+        <div className="panel-scroll-fill">
         {tab === 'home' && (
           <>
             {viewMode === 'home' && (
@@ -928,6 +936,7 @@ export function SidePanelApp() {
             {viewMode === 'report' && report && (
               <RiskReport
                 report={report}
+                isHistoryView={isHistoryView}
                 onOpenDetail={setSelectedRiskId}
                 onOpenRewrite={() => setViewMode('rewrite')}
                 onOpenImageMasking={openImageMasking}
@@ -1028,6 +1037,7 @@ export function SidePanelApp() {
             onClearAll={() => setShowDeleteDialog(true)}
           />
         )}
+        </div>
       </main>
 
       <BottomTabNav current={tab} onChange={setTab} />
