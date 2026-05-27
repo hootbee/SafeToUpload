@@ -1,6 +1,6 @@
 import { ANALYSIS_STAGE_TITLES } from '../../shared/constants';
 import type { AnalysisInput, AnalysisStage } from '../../shared/types';
-import type { DetectionHit } from '../../services/imageDetectService';
+import type { RiskDetectionHit } from '../../services/imageDetectService';
 import { mapAiResponseToReport, normalizeAiResponse } from '../../services/analysisMapper';
 
 /** 모의 분석용 SNS 본문 (전화·이메일·주소·동호수 등은 모두 가상) */
@@ -95,13 +95,15 @@ export const buildMockReport = (input: AnalysisInput) => {
 
   const ai = normalizeAiResponse(partial, input);
 
-  const mockDetections: DetectionHit[] = hasImage
+  const mockDetections: RiskDetectionHit[] = hasImage
     ? [
         {
-          category: 'building_sign',
+          riskId: 'mask-building_sign-0',
+          riskType: 'building_sign',
           label: 'building sign',
           score: 0.36,
           bbox: { x: 0.18, y: 0.1, width: 0.62, height: 0.26 },
+          category: 'building_sign',
         },
       ]
     : [];

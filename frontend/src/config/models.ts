@@ -30,6 +30,8 @@ export const MASK_BLUR_RADIUS = Number(import.meta.env.VITE_MASK_BLUR_RADIUS ?? 
 export const MASK_BLUR_PASSES = Number(import.meta.env.VITE_MASK_BLUR_PASSES ?? 10);
 export const MASK_PIXELATE_MAX_PX = Number(import.meta.env.VITE_MASK_PIXELATE_MAX_PX ?? 2);
 export const MASK_PIXELATE_ROUNDS = Number(import.meta.env.VITE_MASK_PIXELATE_ROUNDS ?? 12);
+/** bbox 대비 상하좌우 확장 비율 (0.02 = 너비·높이 각 2%) */
+export const MASK_PADDING_RATIO = Number(import.meta.env.VITE_MASK_PADDING_RATIO ?? 0.02);
 /** 가장자리 페더(px) — 직사각형 테두리 없이 주변과 자연스럽게 블렌드 */
 export const MASK_FEATHER_PX = Number(import.meta.env.VITE_MASK_FEATHER_PX ?? 28);
 /** 0 = 블러만 적용 (회색·단색 박스 없음) */

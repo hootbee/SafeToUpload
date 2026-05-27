@@ -154,7 +154,13 @@ function parsePrivacyMemoryCandidate(partial: PartialAi): PrivacyMemoryCandidate
 export function normalizeServerAiResponse(
   partial: PartialAi,
   inputText: string,
-  meta: { model: string; chatUrl: string; platform?: string },
+  meta: {
+    model: string;
+    chatUrl: string;
+    platform?: string;
+    imagePath?: string;
+    rawAiResponseExtra?: Record<string, unknown>;
+  },
 ): AiAnalysisResponse {
   const text = inputText ?? '';
   const piiItems =
@@ -173,7 +179,7 @@ export function normalizeServerAiResponse(
     categoryScores: partial.categoryScores as PartialAi['categoryScores'],
     riskReasons: partial.riskReasons as PartialAi['riskReasons'],
     platform: meta.platform,
-    hasImage: Boolean(meta.imagePath?.trim()),
+    hasImage: Boolean(meta.imagePath?.trim()) || meta.rawAiResponseExtra?.visionAttached === true,
   });
 
   const riskLevel = scoring.riskLevel as RiskLevel;
@@ -196,9 +202,10 @@ export function normalizeServerAiResponse(
     privacyMemoryCandidate: parsePrivacyMemoryCandidate(partial),
     rawAiResponse: {
       ...(partial.rawAiResponse && typeof partial.rawAiResponse === 'object' ? partial.rawAiResponse : {}),
-      mode: 'server-chat-completions',
+      mode: 'server',
       model: meta.model,
       chatUrl: meta.chatUrl,
+      ...(meta.rawAiResponseExtra ?? {}),
     },
   };
 }

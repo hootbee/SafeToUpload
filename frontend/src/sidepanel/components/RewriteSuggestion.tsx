@@ -38,6 +38,30 @@ export function RewriteSuggestion({ report }: Props) {
           </div>
         </article>
       </div>
+      {report.rewriteRawResponse && (
+        <details style={{ marginTop: '14px' }}>
+          <summary style={{ cursor: 'pointer', fontSize: '13px', color: '#64748b', fontWeight: 600 }}>
+            모델 원본 응답 보기
+          </summary>
+          <pre
+            style={{
+              marginTop: '10px',
+              maxHeight: '220px',
+              overflow: 'auto',
+              background: '#0f172a',
+              color: '#e2e8f0',
+              borderRadius: '10px',
+              padding: '12px',
+              fontSize: '12px',
+              lineHeight: 1.45,
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+            }}
+          >
+            {report.rewriteRawResponse}
+          </pre>
+        </details>
+      )}
       <label
         className="btn"
         role="button"

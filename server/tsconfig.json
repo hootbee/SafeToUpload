@@ -15,11 +15,13 @@
     "outDir": "./dist",
     "baseUrl": "./",
     "paths": {
-      "@shared/risk-scoring": ["../shared/risk-scoring/index.ts"],
-      "@shared/risk-scoring/*": ["../shared/risk-scoring/*"],
-      "@shared/privacy-memory": ["../shared/privacy-memory/index.ts"],
-      "@shared/privacy-memory/*": ["../shared/privacy-memory/*"],
-      "@shared/analysis-prompt-schema": ["../shared/analysis-prompt-schema.ts"]
+      "@shared/risk-scoring": ["src/_shared/risk-scoring/index"],
+      "@shared/risk-scoring/*": ["src/_shared/risk-scoring/*"],
+      "@shared/privacy-memory": ["src/_shared/privacy-memory/index"],
+      "@shared/privacy-memory/*": ["src/_shared/privacy-memory/*"],
+      "@shared/analysis-prompt-schema": ["src/_shared/analysis-prompt-schema"],
+      "@shared/prompts": ["src/_shared/prompts/index.ts"],
+      "@shared/prompts/*": ["src/_shared/prompts/*"]
     },
     "incremental": true,
     "skipLibCheck": true,

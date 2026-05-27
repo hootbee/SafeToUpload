@@ -1,8 +1,12 @@
 import { applyDeterministicScoring, computeNormalizedRisk } from '@shared/risk-scoring';
+import { toImageRiskRecords } from '../../../shared/image-risk.types';
 import type { AiAnalysisResponse, AiPiiItem, PrivacyMemoryCandidate } from '../shared/aiTypes';
 import type { AnalysisInput, Platform, RiskReportData } from '../shared/types';
-import type { DetectionHit } from './imageDetectService';
-import { buildDynamicImageRiskSummary, buildMaskRegions } from './imageMaskService';
+import type { RiskDetectionHit } from './imageDetectService';
+import { parseImageRiskItems } from './imageRiskHeuristics';
+import { extractLlmDebugMeta } from './llmDebug.util';
+import { buildDynamicImageRiskSummary, buildMaskRegionsFromRisks } from './imageMaskService';
+import { sanitizeExifItems } from './imageExifService';
 
 const PHONE_REGEX = /01[016789][-\s]?\d{3,4}[-\s]?\d{4}/g;
 const EMAIL_REGEX = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
@@ -178,9 +182,11 @@ export function normalizeAiResponse(
       : heuristicPiiScan(text);
 
   const hasImage = Boolean(input.imageFile || input.imageName);
+  const exifItems = sanitizeExifItems(partial.exifItems);
+
   const scoring = applyDeterministicScoring({
     piiItems: piiItems as Array<Record<string, unknown>>,
-    exifItems: Array.isArray(partial.exifItems) ? partial.exifItems : [],
+    exifItems,
     imageRisks: Array.isArray(partial.imageRisks) ? partial.imageRisks : [],
     contextResult:
       partial.contextResult && typeof partial.contextResult === 'object'
@@ -205,7 +211,7 @@ export function normalizeAiResponse(
     riskReasons: scoring.riskReasons,
     escalationRules: scoring.escalationRules,
     piiItems,
-    exifItems: Array.isArray(partial.exifItems) ? partial.exifItems : [],
+    exifItems,
     imageRisks: Array.isArray(partial.imageRisks) ? partial.imageRisks : [],
     contextResult:
       partial.contextResult && typeof partial.contextResult === 'object'
@@ -221,40 +227,51 @@ export function normalizeAiResponse(
   };
 }
 
-function mergeImageRisksFromDetections(
+/** OwlViT는 기존 Gemma 항목의 bbox만 보완 — 새 imageRisks 항목을 추가하지 않음 */
+function attachDetectionBboxToImageRisks(
   imageRisks: Array<Record<string, unknown>>,
-  detections: DetectionHit[],
+  detections: RiskDetectionHit[],
 ): Array<Record<string, unknown>> {
-  const merged = [...imageRisks];
-  const keys = new Set(merged.map((r) => `${String(r.type ?? '')}:${String(r.label ?? '')}`));
+  if (detections.length === 0) return imageRisks;
 
+  const bboxByType = new Map<string, RiskDetectionHit>();
   for (const hit of detections) {
-    const key = `${hit.category}:${hit.label}`;
-    if (keys.has(key)) continue;
-    keys.add(key);
-    merged.push({
-      type: hit.category,
-      label: hit.label,
-      description: `자동 탐지(신뢰도 ${Math.round(hit.score * 100)}%)`,
-      severity: hit.score >= 0.2 ? 'high' : 'medium',
-    });
+    const prev = bboxByType.get(hit.riskType);
+    if (!prev || hit.score > prev.score) {
+      bboxByType.set(hit.riskType, hit);
+    }
   }
-  return merged;
+
+  return imageRisks.map((raw) => {
+    const type = String(raw.type ?? '');
+    const hit = bboxByType.get(type);
+    if (!hit || (raw.bbox && typeof raw.bbox === 'object')) return raw;
+    return {
+      ...raw,
+      bbox: hit.bbox,
+      description:
+        String(raw.description ?? '') ||
+        `OwlViT bbox 보완 (신뢰도 ${Math.round(hit.score * 100)}%)`,
+    };
+  });
 }
 
 /** OwlViT 탐지·imageRisks 반영 후 점수·원인 재계산 (분석 시점보다 리포트 시점이 정확함) */
 function applyImageEvidenceToAi(
   ai: AiAnalysisResponse,
   input: AnalysisInput,
-  detections: DetectionHit[],
+  detections: RiskDetectionHit[],
 ): AiAnalysisResponse {
   const hasImage = Boolean(input.imageFile || input.imageName);
   if (!hasImage) return ai;
 
-  const imageRisks = mergeImageRisksFromDetections(
-    ai.imageRisks as Array<Record<string, unknown>>,
-    detections,
+  const imageRiskItems = parseImageRiskItems(
+    attachDetectionBboxToImageRisks(
+      ai.imageRisks as Array<Record<string, unknown>>,
+      detections,
+    ),
   );
+  const imageRisks = toImageRiskRecords(imageRiskItems);
 
   const normalized = computeNormalizedRisk({
     piiItems: ai.piiItems as Array<Record<string, unknown>>,
@@ -320,18 +337,25 @@ function applyImageEvidenceToAi(
 export function mapAiResponseToReport(
   ai: AiAnalysisResponse,
   input: AnalysisInput,
-  detections: DetectionHit[] = [],
+  detections: RiskDetectionHit[] = [],
 ): RiskReportData {
   const aiWithImage = applyImageEvidenceToAi(ai, input, detections);
 
   const contextSummary = String(aiWithImage.contextResult.summary ?? '컨텍스트 분석 완료');
+  const exifItems = sanitizeExifItems(aiWithImage.exifItems);
   const exifSummary =
-    aiWithImage.exifItems.length > 0
-      ? aiWithImage.exifItems.map((item) => String(item.label ?? item.type ?? '사진 메타정보')).join(', ')
+    exifItems.length > 0
+      ? exifItems.map((item) => String(item.label ?? item.type ?? '사진 메타정보')).join(', ')
       : '이미지 메타데이터 위험 없음';
 
   const hasImage = Boolean(input.imageFile || input.imageName);
-  const maskBuild = buildMaskRegions(aiWithImage, hasImage, detections, input.text);
+  const maskBuild = buildMaskRegionsFromRisks(
+    aiWithImage,
+    hasImage,
+    detections,
+    input.text,
+    input.imageName ?? input.imageFile?.name,
+  );
   const imageRiskSummary = hasImage
     ? buildDynamicImageRiskSummary(maskBuild)
     : '이미지 미업로드, 텍스트 중심 분석';
@@ -340,6 +364,27 @@ export function mapAiResponseToReport(
     .map((item) => item.text || item.label || item.type)
     .filter(Boolean)
     .slice(0, 6) as string[];
+
+  const imageRisksSnapshot = (aiWithImage.imageRisks as Array<Record<string, unknown>>).map((item) => ({
+    type: String(item.type ?? ''),
+    label: String(item.label ?? item.type ?? ''),
+    hasBbox: Boolean(item.bbox && typeof item.bbox === 'object'),
+  }));
+
+  const llmDebug = extractLlmDebugMeta(aiWithImage.rawAiResponse as Record<string, unknown>);
+  const rewriteRawResponse = (() => {
+    const raw = aiWithImage.rawAiResponse as Record<string, unknown> | undefined;
+    const rawContent = raw?.rawContent;
+    if (typeof rawContent === 'string' && rawContent.trim()) {
+      return rawContent;
+    }
+    if (!raw) return undefined;
+    try {
+      return JSON.stringify(raw, null, 2);
+    } catch {
+      return undefined;
+    }
+  })();
 
   return {
     score: aiWithImage.riskScore,
@@ -361,12 +406,17 @@ export function mapAiResponseToReport(
     },
     originalText: input.text,
     rewrittenText: aiWithImage.rewriteSuggestion,
+    rewriteRawResponse,
     maskRegions: maskBuild.regions,
+    imageRisksRaw: aiWithImage.imageRisks as Array<Record<string, unknown>>,
+    imageRisksSnapshot,
     maskCandidateMeta: {
-      gemmaCategories: maskBuild.gemmaCategories,
-      detectedCategories: maskBuild.detectedCategories,
-      unionCategories: maskBuild.unionCategories,
-      skippedCategories: maskBuild.skippedCategories,
+      riskCount: maskBuild.riskCount,
+      skippedRegionIds: maskBuild.skippedRegionIds,
+      skippedLabels: maskBuild.skippedLabels,
+      unlocatedLabels: maskBuild.unlocatedLabels,
+      detectionTrace: maskBuild.detectionTrace,
+      ...llmDebug,
     },
   };
 }
@@ -381,8 +431,9 @@ export function mapRecordToReport(record: {
     imageRisks?: unknown;
     contextResult?: unknown;
     rewriteSuggestion?: string | null;
+    rawAiResponse?: unknown;
   } | null;
-}, platform: Platform, imageName?: string, detections: DetectionHit[] = []): RiskReportData {
+}, platform: Platform, imageName?: string, detections: RiskDetectionHit[] = []): RiskReportData {
   const input: AnalysisInput = { text: record.inputText ?? '', platform, imageName };
   const ctx = (record.result?.contextResult as Record<string, unknown>) ?? {};
   const ai = normalizeAiResponse(
@@ -402,6 +453,8 @@ export function mapRecordToReport(record: {
         ctx.escalationRules) as string[],
       scoreBreakdown: ctx.scoreBreakdown as AiAnalysisResponse['scoreBreakdown'],
       memorySignal: ctx.memorySignal as AiAnalysisResponse['memorySignal'],
+      rawAiResponse:
+        (record.result?.rawAiResponse as Record<string, unknown>) ?? { mode: 'server' },
     },
     input,
   );

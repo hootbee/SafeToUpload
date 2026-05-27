@@ -32,7 +32,18 @@ export function extractDetectedSignals(input: AnalysisScoringInput): DetectedSig
   );
 
   const hasIdCardImage = imageRisks.some((item) =>
-    itemMatches(item, ['id_card', 'passport', 'student', '신분', '여권', '학생증']),
+    itemMatches(item, [
+      'id_card',
+      'id_card_face',
+      'id_card_name',
+      'id_card_rrn',
+      'id_card_address',
+      'passport',
+      'student',
+      '신분',
+      '여권',
+      '학생증',
+    ]),
   );
   const hasPassportOrStudentId = hasIdCardImage;
   const hasFace = imageRisks.some((item) => itemMatches(item, ['face', '얼굴']));
@@ -40,7 +51,7 @@ export function extractDetectedSignals(input: AnalysisScoringInput): DetectedSig
     itemMatches(item, ['document', 'contract', 'receipt', '문서', '계약', '영수', '성적', '진단']),
   );
   const hasBuildingSign = imageRisks.some((item) =>
-    itemMatches(item, ['building_sign', 'building', '간판', '동호', '아파트', '호수', 'sign']),
+    itemMatches(item, ['building_sign', 'building sign', '건물 간판', '동호', '간판', '호수 간판']),
   );
   const hasLicensePlate = imageRisks.some((item) =>
     itemMatches(item, ['license_plate', 'plate', '번호판', '차량']),

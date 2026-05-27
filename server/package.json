@@ -6,9 +6,12 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "build": "nest build",
+    "sync-shared": "node scripts/sync-shared.mjs",
+    "prebuild": "npm run sync-shared && node -e \"require('fs').rmSync('tsconfig.build.tsbuildinfo',{force:true})\"",
+    "build": "nest build && node scripts/fix-dist-imports.mjs",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
+    "prestart:dev": "npm run sync-shared && npm run build",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",

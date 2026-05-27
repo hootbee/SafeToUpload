@@ -10,6 +10,7 @@ import { CreateAnalysisDto } from './dto/create-analysis.dto';
 import { RunAnalysisDto } from './dto/run-analysis.dto';
 import { PrivacyMemoryService } from '../privacy-memory/privacy-memory.service';
 import { SettingsService } from '../settings/settings.service';
+import { ImageStorageService } from '../storage/image-storage.service';
 import { StorageService } from '../storage/storage.service';
 import { AnalysisRunResult } from './types/analysis.types';
 
@@ -19,6 +20,7 @@ export class AnalysisService {
     private readonly prisma: PrismaService,
     private readonly aiProxyService: AiProxyService,
     private readonly storageService: StorageService,
+    private readonly imageStorage: ImageStorageService,
     private readonly privacyMemoryService: PrivacyMemoryService,
     private readonly settingsService: SettingsService,
   ) {}
@@ -53,16 +55,19 @@ export class AnalysisService {
     await this.prisma.analysisRecord.update({ where: { id }, data: { status: AnalysisStatus.PROCESSING } });
 
     const inferenceMode = (record.inferenceMode as InferenceMode) || InferenceMode.SERVER;
+    const effectiveInferenceMode =
+      inferenceMode === InferenceMode.LOCAL ? InferenceMode.SERVER : inferenceMode;
     let aiResult = await this.aiProxyService.analyze(
       {
         sourceType: record.sourceType as any,
         platform: record.platform as any,
-        inferenceMode,
+        inferenceMode: effectiveInferenceMode,
         inputText: record.inputText ?? undefined,
         pageUrl: record.pageUrl ?? undefined,
         imagePath: record.imagePath ?? undefined,
+        analysisId: id,
       },
-      inferenceMode,
+      effectiveInferenceMode,
       dto.llm,
     );
 
@@ -172,6 +177,34 @@ export class AnalysisService {
     });
     if (!record) throw new NotFoundException('Analysis record not found');
     return record;
+  }
+
+  async uploadImage(
+    id: string,
+    file: { buffer: Buffer; originalname: string; mimetype?: string },
+  ) {
+    const record = await this.prisma.analysisRecord.findUnique({ where: { id } });
+    if (!record) throw new NotFoundException('Analysis record not found');
+
+    const storedName = this.imageStorage.saveAnalysisImage(
+      id,
+      file.buffer,
+      file.originalname,
+      file.mimetype,
+    );
+
+    await this.prisma.analysisRecord.update({
+      where: { id },
+      data: {
+        imagePath: this.storageService.redactRawField(record.imagePath ?? file.originalname),
+      },
+    });
+
+    return {
+      id,
+      storedImage: storedName,
+      message: 'Image uploaded for server vision analysis',
+    };
   }
 
   async cancel(id: string) {

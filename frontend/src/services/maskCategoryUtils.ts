@@ -14,8 +14,25 @@ export const MASK_CATEGORY_META: Record<
 > = {
   face: {
     label: '얼굴',
-    aliases: ['face', '얼굴', 'facial', 'human face', 'person'],
-    owlQueries: ['human face', 'person face', 'selfie face', 'portrait face'],
+    aliases: [
+      'face',
+      '얼굴',
+      'facial',
+      'human face',
+      'person',
+      'portrait',
+      'id card photo',
+      'identity card',
+      'passport photo',
+    ],
+    owlQueries: [
+      'human face',
+      'person face',
+      'selfie face',
+      'portrait face',
+      'identity card portrait',
+      'passport photo face',
+    ],
   },
   license_plate: {
     label: '차량 번호판',
@@ -29,8 +46,19 @@ export const MASK_CATEGORY_META: Record<
   },
   building_sign: {
     label: '건물 간판',
-    aliases: ['building_sign', 'sign', '간판', '건물', 'store sign', 'shop sign'],
-    owlQueries: ['store sign', 'building sign', 'shop signboard', 'billboard text', 'street sign'],
+    aliases: [
+      'building_sign',
+      'building sign',
+      'store sign',
+      'shop sign',
+      'shop signboard',
+      'street sign',
+      'billboard',
+      '간판',
+      '건물 간판',
+      '동호수 간판',
+    ],
+    owlQueries: ['store sign', 'building sign', 'shop signboard', 'apartment entrance sign'],
   },
 };
 
@@ -51,7 +79,7 @@ export function resolveMaskCategory(text: string): MaskCategory | null {
   for (const [category, meta] of Object.entries(MASK_CATEGORY_META) as Array<
     [MaskCategory, (typeof MASK_CATEGORY_META)[MaskCategory]]
   >) {
-    if (meta.aliases.some((alias) => key === alias || key.includes(alias) || alias.includes(key))) {
+    if (meta.aliases.some((alias) => key === alias || key.includes(alias))) {
       return category;
     }
   }
@@ -78,6 +106,9 @@ export function inferMaskCategoriesFromContext(
 ): Set<MaskCategory> {
   const found = extractCategoriesFromImageRisks(imageRisks);
   const body = text.trim();
+  if (!/(아파트|빌라|오피스텔|동\s*\d+|호\s*\d+|번지|간판|호수|현관)/i.test(body)) {
+    found.delete('building_sign');
+  }
   if (!body) return found;
 
   if (/(아파트|빌라|오피스텔|동\s*\d+|호\s*\d+|번지|로\s*\d|길\s*\d|현관|출입|간판|호수)/i.test(body)) {
@@ -93,8 +124,15 @@ export function inferMaskCategoriesFromContext(
   return found;
 }
 
-export function imageRiskSummaryForCategories(categories: Iterable<MaskCategory>) {
-  const labels = [...categories].map(categoryDisplayLabel);
+export function riskTypeToMaskCategory(riskType: string): MaskCategory | undefined {
+  const key = riskType.toLowerCase();
+  if (key === 'face' || key.startsWith('id_card_face')) return 'face';
+  if (key === 'license_plate') return 'license_plate';
+  if (key === 'building_sign') return 'building_sign';
+  return resolveMaskCategory(riskType) ?? undefined;
+}
+
+export function imageRiskSummaryLabels(labels: string[]) {
   if (labels.length === 0) return '이미지에서 마스킹 대상이 확인되지 않았습니다.';
   return labels.join(', ');
 }

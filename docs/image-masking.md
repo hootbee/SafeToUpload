@@ -28,24 +28,30 @@ SafeToUpload 확장에서 **업로드 이미지에 실제로 블러/모자이크
 
 ---
 
-## 2. 현재 상태
+## 2. 현재 상태 (imageRisks 동적 마스킹)
 
 ```
-[ImageUploadBox] → File[] (SidePanelApp state)
-       ↓ 분석
-[localAiService / server API] → imageRisks (텍스트/JSON, bbox 없음)
+[Gemma4 E4B] → imageRisks[] (type, label, bbox?)
+       ↓ imageRisks 그대로 (필터 없음)
+[buildMaskRegionsFromRisks]
+       ├─ 1순위 Gemma bbox
+       ├─ 2순위 OwlViT (bbox 없는 항목만, 최대 5회)
+       └─ 3순위 id_card 레이아웃 / 카테고리 폴백
        ↓
-[analysisMapper] → imageMasks: { id, label, checked }  ← 고정 휴리스틱
+[MaskRegion] N개 (체크박스 = 항목 1개)
        ↓
-[ImageMaskingPanel] → 미리보기만 표시, 적용/다운로드 미연결
+[ImageMaskingPanel] applyMasksToFile → 미리보기·다운로드
 ```
 
-- `imageMasks`는 위험 점수·`imageRisks` 유무만으로 체크 초기값을 정함.
-- **bbox(사각형 좌표)**, **Canvas 렌더**, **적용/다운로드 핸들러** 없음.
+- 체크박스 = **Gemma `imageRisks` 항목 그대로** (필터·확장·레이아웃으로 항목을 추가/삭제하지 않음).
+- bbox: **Gemma → OwlViT**(항목별 label/type 쿼리)만. 레이아웃·카테고리 폴백 bbox 없음.
+- bbox 없는 항목은 탐지 내역에만 표시, 마스킹 영역은 생성하지 않음.
+
+공통 타입: `shared/image-risk.types.ts`
 
 ---
 
-## 3. 목표 아키텍처
+## 3. 목표 아키텍처 (구현됨)
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -71,22 +77,18 @@ SafeToUpload 확장에서 **업로드 이미지에 실제로 블러/모자이크
          적용 / 다운로드 / 미리보기
 ```
 
-### 데이터 모델 (제안)
-
-`frontend/src/shared/types.ts`에 추가·정리:
+### 데이터 모델
 
 ```ts
-export type MaskCategory = 'face' | 'license_plate' | 'building_sign';
-
-/** bbox는 이미지 대비 0~1 정규화 (해상도 독립) */
+/** imageRisks.type 그대로 보존 */
 export interface MaskRegion {
   id: string;
-  category: MaskCategory;
+  riskType: string;
+  category?: MaskCategory; // OwlViT·패딩 라우팅용만
   label: string;
-  bbox: { x: number; y: number; width: number; height: number };
-  confidence?: number;
+  bbox: NormalizedBbox;
   checked: boolean;
-  source: 'auto' | 'user' | 'fallback';
+  source: 'gemma' | 'owl' | 'layout' | 'fallback' | 'user';
 }
 
 export interface RiskReportData {
@@ -238,11 +240,11 @@ MVP는 **서버 없이** 확장 내 `File` + Canvas만으로 완결 가능.
 
 | 역할 | 담당 |
 |------|------|
-| “이 이미지에 얼굴/번호판 위험이 있는가?” | Gemma4 `imageRisks` (텍스트·심각도) |
-| “어디를 가릴까?” (bbox) | `imageDetectService` |
+| “무엇이 위험한가?” (항목·label·severity) | Gemma4 `imageRisks` |
+| “어디를 가릴까?” (bbox) | Gemma bbox → OwlViT(항목별) → id_card 레이아웃 |
 | “실제로 가리기” | `imageMaskService` (Canvas) |
 
-Gemma4 E4B는 이미 WebGPU로 무겁기 때문에 **마스킹용 두 번째 VLM 추론은 피하는 것**이 좋습니다.
+OwlViT는 **bbox가 없는 imageRisks 항목만** targeted 탐지 (`detectMaskRegionsForRisks`).
 
 ---
 
@@ -256,12 +258,20 @@ Gemma4 E4B는 이미 WebGPU로 무겁기 때문에 **마스킹용 두 번째 VLM
 
 ## 9. 테스트 체크리스트
 
-- [ ] JPEG/PNG/HEIC(브라우저 지원 범위) 업로드 후 마스킹
-- [ ] 세로·가로·고해상도 이미지에서 bbox 스케일 정확
+### 공통
+- [ ] JPEG/PNG 업로드 후 마스킹 적용·다운로드
 - [ ] 체크 해제 시 해당 영역 미적용
-- [ ] 적용 후 다운로드 파일 EXIF 없음(샘플 EXIF 이미지로 검증)
-- [ ] 연속 분석 시 이전 blob URL 누수 없음
-- [ ] 로컬/서버 모드 각각 (서버는 Phase 4까지 File ref 유지)
+- [ ] 연속 분석 시 blob URL 누수 없음
+
+### 주민등록증 (로컬 Gemma4)
+- [ ] 마스킹 탭: 얼굴, 이름, 주민번호, 주소 (+ 신분증 전체, 기본 off)
+- [ ] `building_sign` 항목 **표시 안 됨**
+- [ ] Gemma bbox 없을 때 layout 폴백으로 각 필드 영역 생성
+- [ ] skipped 안내: 항목 label 기준(「주소 — 추정 영역」)
+
+### 간판·기타
+- [ ] 실제 간판 사진: Gemma가 `building_sign` 출력 시 해당 항목 1개만 표시
+- [ ] `imageRisks` 빈 배열: 마스킹 항목 없음 + 안내 (가짜 building_sign 없음)
 
 ---
 

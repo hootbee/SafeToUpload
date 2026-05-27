@@ -1,12 +1,11 @@
 import { dedupeRiskReasons } from '@shared/risk-scoring';
 import type { RiskReportData } from '../../shared/types';
 import {
-  formatScoreFormulaKorean,
   RISK_CATEGORY_LABEL,
   RISK_LEVEL_LABEL,
   type RiskCategoryKey,
 } from '../../shared/riskReportLabels';
-import { TbReportAnalytics, TbMessageCode, TbHistory, TbAlertTriangle } from "react-icons/tb";
+import { TbReportAnalytics, TbHistory, TbAlertTriangle } from "react-icons/tb";
 import { HiOutlineIdentification } from "react-icons/hi2";
 import { FiCamera } from "react-icons/fi";
 import { IoImageOutline } from "react-icons/io5";
@@ -79,9 +78,6 @@ export function RiskReport({ report, onOpenDetail, onOpenRewrite, onOpenImageMas
               </li>
             ))}
           </ul>
-          <p className="muted" style={{ fontSize: '12px', margin: '12px 0 0 0' }}>
-            {formatScoreFormulaKorean(report.scoreBreakdown)}
-          </p>
         </section>
 
         {(riskReasons.pii.length > 0 ||
@@ -164,14 +160,6 @@ export function RiskReport({ report, onOpenDetail, onOpenRewrite, onOpenImageMas
         >
           이미지 마스킹
         </label>
-      </section>
-      <section className="card">
-        <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '16px', margin: '0 0 12px 0' }}>
-          <TbMessageCode size={18} /> 글·게시 맥락
-        </h3>
-        <p className="muted" style={{ fontSize: '14px', margin: 0, lineHeight: 1.5 }}>
-          {report.contextSummary}
-        </p>
       </section>
       <section className="card">
         <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '16px', margin: '0 0 12px 0' }}>

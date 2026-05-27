@@ -1,8 +1,14 @@
-import { MASK_FEATHER_PX, MASK_OVERLAY_OPACITY, MASK_PIXELATE_ROUNDS } from '../config/models';
+import { resolveMaskRenderParams, type MaskRenderOptions } from '../config/maskRenderSettings';
+import type { ImageRiskItem } from '../../../shared/image-risk.types';
 import type { AiAnalysisResponse } from '../shared/aiTypes';
-import type { MaskCategory, MaskRegion } from '../shared/types';
-import type { DetectionHit } from './imageDetectService';
-import { groupDetectionsByCategory } from './imageDetectService';
+import type {
+  MaskDetectionTrace,
+  MaskRegion,
+  MaskRegionSource,
+  MaskTraceEntry,
+  NormalizedBbox,
+} from '../shared/types';
+import type { RiskDetectionHit } from './imageDetectService';
 import {
   bboxToPixelRect,
   normalizeBboxScale,
@@ -10,127 +16,229 @@ import {
   sanitizeMaskBbox,
   tightenMaskBbox,
 } from './bboxUtils';
-import {
-  categoryDisplayLabel,
-  extractCategoriesFromImageRisks,
-  FALLBACK_BBOX_BY_CATEGORY,
-  imageRiskSummaryForCategories,
-  inferMaskCategoriesFromContext,
-  resolveMaskCategory,
-} from './maskCategoryUtils';
+import { parseImageRiskItems } from './imageRiskHeuristics';
+import { riskTypeToMaskCategory } from './maskCategoryUtils';
 
 export interface MaskRegionsBuildResult {
   regions: MaskRegion[];
-  gemmaCategories: MaskCategory[];
-  detectedCategories: MaskCategory[];
-  unionCategories: MaskCategory[];
-  skippedCategories: MaskCategory[];
+  riskCount: number;
+  skippedRegionIds: string[];
+  skippedLabels: string[];
+  /** bbox 없어 마스킹 영역을 만들지 못한 항목 (Gemma는 반환함) */
+  unlocatedLabels: string[];
+  detectionTrace: MaskDetectionTrace;
 }
 
-export function buildMaskRegions(
+function displayLabel(risk: ImageRiskItem): string {
+  return risk.label?.trim() || risk.type?.trim() || '항목';
+}
+
+function traceEntry(
+  stage: MaskTraceEntry['stage'],
+  type: string,
+  label: string,
+  detail: string,
+): MaskTraceEntry {
+  return { stage, type, label, detail };
+}
+
+function snapshotGemmaRisks(ai: AiAnalysisResponse): MaskTraceEntry[] {
+  const raw = Array.isArray(ai.imageRisks) ? ai.imageRisks : [];
+  if (raw.length === 0) {
+    return [traceEntry('gemma', '—', '—', '항목 없음 (빈 배열 또는 파싱 실패)')];
+  }
+  return raw.map((item) => {
+    const type = String(item.type ?? '');
+    const label = String(item.label ?? item.type ?? '—');
+    const hasBbox = Boolean(item.bbox && typeof item.bbox === 'object');
+    return traceEntry('gemma', type || '—', label, hasBbox ? 'bbox 있음' : 'bbox 없음');
+  });
+}
+
+export function riskRegionId(type: string, index: number) {
+  return `mask-${type.replace(/[^a-zA-Z0-9_]+/g, '_')}-${index}`;
+}
+
+/** Gemma imageRisks 그대로 사용 (항목 추가·삭제·타입 변환 없음) */
+export function prepareImageRisksItems(ai: AiAnalysisResponse): ImageRiskItem[] {
+  return parseImageRiskItems(ai.imageRisks as Array<Record<string, unknown>>);
+}
+
+export function imageRiskRegionIds(items: ImageRiskItem[]): string[] {
+  return items.map((risk, index) => riskRegionId(risk.type, index));
+}
+
+function resolveRiskBbox(
+  risk: ImageRiskItem,
+  detectionsByRiskId: Map<string, RiskDetectionHit>,
+  riskId: string,
+): { bbox: NormalizedBbox; source: MaskRegionSource; confidence?: number } | null {
+  const fromGemma = risk.bbox ? parseNormalizedBbox(risk.bbox) : null;
+  if (fromGemma) {
+    return { bbox: fromGemma, source: 'gemma' };
+  }
+
+  const fromOwl = detectionsByRiskId.get(riskId);
+  if (fromOwl) {
+    return { bbox: fromOwl.bbox, source: 'owl', confidence: fromOwl.score };
+  }
+
+  return null;
+}
+
+/** imageRisks 항목마다 MaskRegion 1개 (bbox 있을 때만) */
+export function buildMaskRegionsFromRisks(
   ai: AiAnalysisResponse,
   hasImage: boolean,
-  detections: DetectionHit[] = [],
-  inputText = '',
+  detections: RiskDetectionHit[] = [],
+  _inputText = '',
+  _imageName?: string,
 ): MaskRegionsBuildResult {
+  const emptyTrace: MaskDetectionTrace = {
+    gemmaCount: 0,
+    preparedCount: 0,
+    owlCount: 0,
+    regionCount: 0,
+    entries: [],
+  };
+
   if (!hasImage) {
     return {
       regions: [],
-      gemmaCategories: [],
-      detectedCategories: [],
-      unionCategories: [],
-      skippedCategories: [],
+      riskCount: 0,
+      skippedRegionIds: [],
+      skippedLabels: [],
+      unlocatedLabels: [],
+      detectionTrace: emptyTrace,
     };
   }
 
-  const gemmaSet = extractCategoriesFromImageRisks(ai.imageRisks);
-  const hintSet = inferMaskCategoriesFromContext(ai.imageRisks, inputText);
-  const detectedByCategory = groupDetectionsByCategory(detections);
-  const detectedSet = new Set(detectedByCategory.keys());
+  const traceEntries: MaskTraceEntry[] = [...snapshotGemmaRisks(ai)];
+  const gemmaCount = traceEntries.filter((e) => e.stage === 'gemma' && e.type !== '—').length;
 
-  const unionSet = new Set<MaskCategory>([...gemmaSet, ...hintSet, ...detectedSet]);
-  const unionCategories = [...unionSet];
-  const skippedCategories: MaskCategory[] = [];
+  const items = prepareImageRisksItems(ai);
+
+  for (const risk of items) {
+    traceEntries.push(
+      traceEntry(
+        'expand',
+        risk.type,
+        displayLabel(risk),
+        risk.bbox ? '항목 유지 · bbox 있음' : '항목 유지 · bbox 없음 (OwlViT 시도)',
+      ),
+    );
+  }
+
+  const detectionsByRiskId = new Map<string, RiskDetectionHit>();
+  for (const hit of detections) {
+    if (hit.riskId) detectionsByRiskId.set(hit.riskId, hit);
+    traceEntries.push(
+      traceEntry(
+        'owl',
+        hit.riskType,
+        hit.label,
+        `신뢰도 ${Math.round(hit.score * 100)}% · id=${hit.riskId}`,
+      ),
+    );
+  }
+
   const regions: MaskRegion[] = [];
+  const skippedRegionIds: string[] = [];
+  const skippedLabels: string[] = [];
+  const unlocatedLabels: string[] = [];
 
-  for (const category of unionCategories) {
-    const fromDetect = detectedByCategory.get(category);
-    const gemmaItem = findImageRiskItem(ai.imageRisks, category);
-    const fromGemmaBbox = gemmaItem ? parseNormalizedBbox(gemmaItem.bbox) : null;
-    const resolvedBbox = fromDetect?.bbox ?? fromGemmaBbox;
-    const allowFallback =
-      !resolvedBbox &&
-      (gemmaSet.has(category) || hintSet.has(category) || detectedSet.has(category));
-
-    if (!resolvedBbox && !allowFallback) {
-      continue;
+  items.forEach((risk, index) => {
+    const id = riskRegionId(risk.type, index);
+    const resolved = resolveRiskBbox(risk, detectionsByRiskId, id);
+    if (!resolved) {
+      unlocatedLabels.push(displayLabel(risk));
+      traceEntries.push(
+        traceEntry('region', risk.type, displayLabel(risk), 'bbox 없음 — 마스킹 영역 미생성'),
+      );
+      return;
     }
 
-    const usedFallback = !resolvedBbox;
-    const rawBbox = normalizeBboxScale(resolvedBbox ?? FALLBACK_BBOX_BY_CATEGORY[category]);
-    const bbox = sanitizeMaskBbox(tightenMaskBbox(rawBbox, category));
+    const rawBbox = normalizeBboxScale(resolved.bbox);
+    const bbox = sanitizeMaskBbox(tightenMaskBbox(rawBbox, risk.type));
 
-    if (usedFallback) {
-      skippedCategories.push(category);
-    }
+    const sourceLabel =
+      resolved.source === 'gemma'
+        ? 'Gemma bbox'
+        : `OwlViT${resolved.confidence != null ? ` ${Math.round(resolved.confidence * 100)}%` : ''}`;
+
+    traceEntries.push(
+      traceEntry(
+        'region',
+        risk.type,
+        displayLabel(risk),
+        `마스킹 영역 생성 · ${sourceLabel}`,
+      ),
+    );
 
     regions.push({
-      id: `mask-${category}`,
-      category,
-      label: String(gemmaItem?.label ?? categoryDisplayLabel(category)),
+      id,
+      riskType: risk.type,
+      category: riskTypeToMaskCategory(risk.type),
+      label: displayLabel(risk),
       bbox,
-      confidence: fromDetect?.score,
-      checked: true,
-      source: fromDetect || fromGemmaBbox ? 'auto' : 'fallback',
+      confidence: resolved.confidence,
+      checked: risk.defaultChecked !== false,
+      source: resolved.source,
     });
-  }
+  });
 
-  if (regions.length === 0) {
-    const category: MaskCategory = hintSet.has('face')
-      ? 'face'
-      : hintSet.has('license_plate')
-        ? 'license_plate'
-        : 'building_sign';
-    skippedCategories.push(category);
-    regions.push({
-      id: `mask-${category}`,
-      category,
-      label: categoryDisplayLabel(category),
-      bbox: sanitizeMaskBbox(FALLBACK_BBOX_BY_CATEGORY[category]),
-      checked: true,
-      source: 'fallback',
-    });
-  }
+  const detectionTrace: MaskDetectionTrace = {
+    gemmaCount,
+    preparedCount: items.length,
+    owlCount: detections.length,
+    regionCount: regions.length,
+    entries: traceEntries,
+  };
 
   return {
     regions,
-    gemmaCategories: [...gemmaSet],
-    detectedCategories: [...detectedSet],
-    unionCategories: unionCategories.length > 0 ? unionCategories : regions.map((r) => r.category),
-    skippedCategories,
+    riskCount: items.length,
+    skippedRegionIds,
+    skippedLabels,
+    unlocatedLabels,
+    detectionTrace,
   };
+}
+
+/** @deprecated buildMaskRegionsFromRisks 사용 */
+export function buildMaskRegions(
+  ai: AiAnalysisResponse,
+  hasImage: boolean,
+  detections: RiskDetectionHit[] = [],
+  inputText = '',
+  imageName?: string,
+): MaskRegionsBuildResult {
+  return buildMaskRegionsFromRisks(ai, hasImage, detections, inputText, imageName);
 }
 
 export function buildDynamicImageRiskSummary(result: MaskRegionsBuildResult) {
   if (result.regions.length > 0) {
+    const normalizeLabelKey = (label: string) => label.trim().toLowerCase();
     const labels = result.regions.map((r) => r.label);
-    return `마스킹 후보: ${labels.join(', ')}`;
+    const totalByLabel = new Map<string, number>();
+    for (const label of labels) {
+      const key = normalizeLabelKey(label);
+      totalByLabel.set(key, (totalByLabel.get(key) ?? 0) + 1);
+    }
+    const seenByLabel = new Map<string, number>();
+    const numberedLabels = labels.map((label) => {
+      const key = normalizeLabelKey(label);
+      const total = totalByLabel.get(key) ?? 0;
+      const seen = (seenByLabel.get(key) ?? 0) + 1;
+      seenByLabel.set(key, seen);
+      return total > 1 ? `${label}${seen}` : label;
+    });
+    return `마스킹 후보: ${numberedLabels.join(', ')}`;
   }
-  if (result.unionCategories.length > 0 && result.skippedCategories.length > 0) {
-    return `위험 유형은 확인됐으나 정확한 영역을 찾지 못했습니다 (${imageRiskSummaryForCategories(result.skippedCategories)}).`;
+  if (result.unlocatedLabels.length > 0) {
+    return `항목은 확인됐으나 bbox가 없습니다 (${result.unlocatedLabels.join(', ')}).`;
   }
   return '이미지에서 마스킹 후보가 없습니다.';
-}
-
-function findImageRiskItem(imageRisks: Array<Record<string, unknown>>, category: MaskCategory) {
-  for (const item of imageRisks) {
-    const type = String(item.type ?? '');
-    const label = String(item.label ?? '');
-    if (resolveMaskCategory(type) === category || resolveMaskCategory(label) === category) {
-      return item;
-    }
-  }
-  return null;
 }
 
 type LoadedImage = {
@@ -141,111 +249,91 @@ type LoadedImage = {
 };
 
 async function loadImageFromFile(file: File): Promise<LoadedImage> {
-  try {
-    const bitmap = await createImageBitmap(file);
-    return {
-      source: bitmap,
-      width: bitmap.width,
-      height: bitmap.height,
-      cleanup: () => bitmap.close(),
-    };
-  } catch {
-    const url = URL.createObjectURL(file);
-    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const el = new Image();
-      el.onload = () => resolve(el);
-      el.onerror = () => reject(new Error('이미지를 불러오지 못했습니다.'));
-      el.src = url;
-    });
-    return {
-      source: img,
-      width: img.naturalWidth,
-      height: img.naturalHeight,
-      cleanup: () => URL.revokeObjectURL(url),
-    };
-  }
+  const bitmap = await createImageBitmap(file);
+  return {
+    source: bitmap,
+    width: bitmap.width,
+    height: bitmap.height,
+    cleanup: () => bitmap.close(),
+  };
 }
 
-/** 블록 평균색 — 픽셀을 직접 덮어써서 가독 불가 */
-function blockPixelateImageData(imageData: ImageData, blockSize: number) {
-  const { width: w, height: h, data: d } = imageData;
-  const block = Math.max(4, blockSize);
-
-  for (let by = 0; by < h; by += block) {
-    for (let bx = 0; bx < w; bx += block) {
-      const yEnd = Math.min(by + block, h);
-      const xEnd = Math.min(bx + block, w);
+function blockPixelateImageData(
+  imageData: ImageData,
+  maxBlock: number,
+  round: number,
+  totalRounds: number,
+) {
+  const { data, width, height } = imageData;
+  const growth = 1 + round / Math.max(totalRounds, 1);
+  const block = Math.max(
+    1,
+    Math.min(maxBlock * growth, Math.floor(Math.min(width, height) / 4)),
+  );
+  for (let y = 0; y < height; y += block) {
+    for (let x = 0; x < width; x += block) {
       let r = 0;
       let g = 0;
       let b = 0;
-      let n = 0;
-
-      for (let py = by; py < yEnd; py += 1) {
-        for (let px = bx; px < xEnd; px += 1) {
-          const i = (py * w + px) * 4;
-          r += d[i];
-          g += d[i + 1];
-          b += d[i + 2];
-          n += 1;
+      let count = 0;
+      for (let dy = 0; dy < block && y + dy < height; dy += 1) {
+        for (let dx = 0; dx < block && x + dx < width; dx += 1) {
+          const i = ((y + dy) * width + (x + dx)) * 4;
+          r += data[i];
+          g += data[i + 1];
+          b += data[i + 2];
+          count += 1;
         }
       }
-      if (n === 0) continue;
-
-      r = Math.round(r / n);
-      g = Math.round(g / n);
-      b = Math.round(b / n);
-
-      for (let py = by; py < yEnd; py += 1) {
-        for (let px = bx; px < xEnd; px += 1) {
-          const i = (py * w + px) * 4;
-          d[i] = r;
-          d[i + 1] = g;
-          d[i + 2] = b;
-          d[i + 3] = 255;
+      r = Math.round(r / count);
+      g = Math.round(g / count);
+      b = Math.round(b / count);
+      for (let dy = 0; dy < block && y + dy < height; dy += 1) {
+        for (let dx = 0; dx < block && x + dx < width; dx += 1) {
+          const i = ((y + dy) * width + (x + dx)) * 4;
+          data[i] = r;
+          data[i + 1] = g;
+          data[i + 2] = b;
         }
       }
     }
   }
 }
 
-/**
- * 이미 그려진 메인 캔버스 픽셀을 직접 수정 (오프스크린 합성·filter 없음).
- * Chrome 확장에서 가장 안정적으로 동작함.
- */
 function obliterateRectOnMainCanvas(
   ctx: CanvasRenderingContext2D,
-  canvasWidth: number,
-  canvasHeight: number,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  rounds: number,
-): boolean {
-  const ix = Math.max(0, Math.floor(x));
-  const iy = Math.max(0, Math.floor(y));
-  const iw = Math.min(canvasWidth - ix, Math.max(1, Math.ceil(w)));
-  const ih = Math.min(canvasHeight - iy, Math.max(1, Math.ceil(h)));
+  ix: number,
+  iy: number,
+  iw: number,
+  ih: number,
+  blurRadius: number,
+  blurPasses: number,
+  pixelateMaxPx: number,
+  pixelateRounds: number,
+) {
+  for (let pass = 0; pass < blurPasses; pass += 1) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(ix, iy, iw, ih);
+    ctx.clip();
+    ctx.filter = `blur(${blurRadius}px)`;
+    ctx.drawImage(ctx.canvas, ix, iy, iw, ih, ix, iy, iw, ih);
+    ctx.restore();
+  }
 
-  if (iw < 4 || ih < 4) return false;
-
-  const blockSize = Math.max(6, Math.min(20, Math.floor(Math.min(iw, ih) / 5)));
-
-  for (let round = 0; round < rounds; round += 1) {
+  for (let round = 0; round < pixelateRounds; round += 1) {
     try {
       const imageData = ctx.getImageData(ix, iy, iw, ih);
-      blockPixelateImageData(imageData, blockSize);
+      blockPixelateImageData(imageData, pixelateMaxPx, round, pixelateRounds);
       ctx.putImageData(imageData, ix, iy);
     } catch {
       ctx.save();
       ctx.fillStyle = '#7a7a7a';
       ctx.fillRect(ix, iy, iw, ih);
       ctx.restore();
-      return true;
+      return;
     }
   }
-
-  return true;
 }
 
 function expandPixelRect(
@@ -266,27 +354,15 @@ function expandPixelRect(
 export async function applyMasksToFile(
   file: File,
   regions: MaskRegion[],
-  options?: {
-    blurRadius?: number;
-    blurPasses?: number;
-    pixelateMaxPx?: number;
-    overlayOpacity?: number;
-    padding?: number;
-  },
+  options?: MaskRenderOptions,
 ): Promise<Blob> {
   const selected = regions.filter((r) => r.checked);
   if (selected.length === 0) {
     throw new Error('마스킹할 항목을 하나 이상 선택하세요.');
   }
 
-  const pixelateRounds = MASK_PIXELATE_ROUNDS;
-  const featherRatio = Math.max(0.06, MASK_FEATHER_PX / 400);
-
-  const paddingByCategory: Record<MaskCategory, number> = {
-    face: 0.04,
-    license_plate: 0.03,
-    building_sign: 0.02,
-  };
+  const render = resolveMaskRenderParams(options);
+  const featherRatio = Math.max(0.06, render.featherPx / 400);
 
   const loaded = await loadImageFromFile(file);
   const { source, width, height } = loaded;
@@ -304,51 +380,51 @@ export async function applyMasksToFile(
   loaded.cleanup();
 
   let applied = 0;
+  const padRatio = render.paddingRatio;
+
   for (const region of selected) {
-    const padRatio = paddingByCategory[region.category] ?? options?.padding ?? 0.02;
     const rect = bboxToPixelRect(region.bbox, width, height, padRatio);
     if (!rect) continue;
 
     const expanded = expandPixelRect(rect, width, height, featherRatio);
-    const ok = obliterateRectOnMainCanvas(
+    obliterateRectOnMainCanvas(
       ctx,
-      width,
-      height,
       expanded.x,
       expanded.y,
       expanded.w,
       expanded.h,
-      pixelateRounds,
+      render.blurRadius,
+      render.blurPasses,
+      render.pixelateMaxPx,
+      render.pixelateRounds,
     );
-    if (ok) applied += 1;
+    applied += 1;
   }
 
   if (applied === 0) {
-    throw new Error(
-      '마스킹 영역을 이미지 위에 그리지 못했습니다. 분석을 다시 실행하거나 항목을 확인해 주세요.',
-    );
+    throw new Error('유효한 마스킹 영역이 없습니다. bbox를 확인하세요.');
   }
 
-  if ((options?.overlayOpacity ?? MASK_OVERLAY_OPACITY) > 0) {
+  if (render.overlayOpacity > 0) {
     for (const region of selected) {
-      const rect = bboxToPixelRect(region.bbox, width, height, 0.02);
+      const rect = bboxToPixelRect(region.bbox, width, height, padRatio);
       if (!rect) continue;
       ctx.save();
-      ctx.globalAlpha = Math.min(1, options?.overlayOpacity ?? MASK_OVERLAY_OPACITY);
-      ctx.fillStyle = '#6b7280';
+      ctx.fillStyle = `rgba(120,120,120,${render.overlayOpacity})`;
       ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
       ctx.restore();
     }
   }
 
-  const blob = await new Promise<Blob | null>((resolve) => {
-    canvas.toBlob(resolve, 'image/png');
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error('마스킹 결과 이미지 생성에 실패했습니다.'));
+    }, 'image/png');
   });
-  if (!blob) throw new Error('마스킹 이미지를 생성하지 못했습니다.');
-  return blob;
 }
 
-export function suggestedMaskedFileName(originalName?: string) {
-  const base = originalName?.replace(/\.[^.]+$/, '') ?? 'image';
+export function suggestedMaskedFileName(originalName: string) {
+  const base = originalName.replace(/\.[^.]+$/, '');
   return `${base}-masked.png`;
 }

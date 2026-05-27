@@ -25,4 +25,9 @@ export class AiAnalysisRequestDto {
   @IsOptional()
   @IsString()
   imagePath?: string;
+
+  /** 분석 ID 기준 저장된 업로드 이미지 (서버 디스크) */
+  @IsOptional()
+  @IsString()
+  analysisId?: string;
 }
