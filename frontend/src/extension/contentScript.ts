@@ -1,9 +1,41 @@
 const BTN_ID = 'safe-to-upload-floating-btn';
+let lastSentUrl = '';
 
 function sendClickEvent() {
   if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
-    chrome.runtime.sendMessage({ type: 'INJECTED_BUTTON_CLICK' });
+    chrome.runtime.sendMessage({
+      type: 'INJECTED_BUTTON_CLICK',
+      payload: { tabUrl: window.location.href },
+    });
   }
+}
+
+function notifyCurrentUrlIfChanged() {
+  const currentUrl = window.location.href;
+  if (!currentUrl || currentUrl === lastSentUrl) return;
+  lastSentUrl = currentUrl;
+  if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+    chrome.runtime.sendMessage({
+      type: 'PLATFORM_URL_CHANGED',
+      payload: { tabUrl: currentUrl },
+    });
+  }
+}
+
+function bindUrlChangeNotifier() {
+  const originalPushState = history.pushState.bind(history);
+  const originalReplaceState = history.replaceState.bind(history);
+
+  history.pushState = function (...args) {
+    originalPushState(...args);
+    notifyCurrentUrlIfChanged();
+  };
+  history.replaceState = function (...args) {
+    originalReplaceState(...args);
+    notifyCurrentUrlIfChanged();
+  };
+
+  window.addEventListener('popstate', () => notifyCurrentUrlIfChanged());
 }
 
 function mountFloatingButton() {
@@ -33,7 +65,13 @@ function mountFloatingButton() {
 }
 
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', mountFloatingButton);
+  document.addEventListener('DOMContentLoaded', () => {
+    mountFloatingButton();
+    bindUrlChangeNotifier();
+    notifyCurrentUrlIfChanged();
+  });
 } else {
   mountFloatingButton();
+  bindUrlChangeNotifier();
+  notifyCurrentUrlIfChanged();
 }

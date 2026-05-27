@@ -5,6 +5,7 @@ import { mapAiResponseToReport, mapHistoryToItem, mapRecordToReport } from '../s
 import { applyLocalPrivacyMemory } from '../services/privacyMemoryClient';
 import { detectMaskRegionsFromFile } from '../services/imageDetectService';
 import { inferMaskCategoriesFromContext } from '../services/maskCategoryUtils';
+import { applyPlatformAutoToggle, detectPlatformFromUrl } from '../services/platformDetect';
 import { applyMasksToFile, suggestedMaskedFileName } from '../services/imageMaskService';
 import {
   clearStoredAnalysisHistory,
@@ -190,10 +191,28 @@ export function SidePanelApp() {
     }
   }, []);
 
+  const applyAutoPlatform = useCallback(
+    (tabUrl?: string) => {
+      const detected = detectPlatformFromUrl(tabUrl);
+      setPlatform(detected);
+      setSettings((prev) => {
+        const next = applyPlatformAutoToggle(prev, detected);
+        if (next !== prev) {
+          void persistSettings(next);
+        }
+        return next;
+      });
+    },
+    [persistSettings],
+  );
+
   useEffect(() => {
     if (!hasChromeRuntime || !chrome.runtime.onMessage) return;
 
     const listener = (message: ExtensionMessage) => {
+      if (message?.payload?.tabUrl) {
+        applyAutoPlatform(message.payload.tabUrl);
+      }
       if (message?.type === 'CONTEXT_ANALYZE_TEXT' && message.payload?.selectedText) {
         setTab('home');
         setViewMode('home');
@@ -206,7 +225,17 @@ export function SidePanelApp() {
 
     chrome.runtime.onMessage.addListener(listener);
     return () => chrome.runtime.onMessage.removeListener(listener);
-  }, []);
+  }, [applyAutoPlatform]);
+
+  useEffect(() => {
+    if (!hasChromeRuntime || !chrome.tabs?.query) return;
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs: Array<{ url?: string }>) => {
+      const url = tabs?.[0]?.url;
+      if (url) {
+        applyAutoPlatform(url);
+      }
+    });
+  }, [applyAutoPlatform]);
 
   useEffect(() => {
     (async () => {
