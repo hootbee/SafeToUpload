@@ -3,6 +3,7 @@ import { API_BASE_URL, DEFAULT_SERVER_LLM_CHAT_URL, DEFAULT_SERVER_LLM_MODEL } f
 import * as api from '../services/apiClient';
 import { mapHistoryToItem, mapRecordToReport } from '../services/analysisMapper';
 import { detectMaskRegionsForRisks, type RiskDetectionHit } from '../services/imageDetectService';
+import { extractExifItemsFromFile, sanitizeExifItems } from '../services/imageExifService';
 import {
   applyMasksToFile,
   buildDynamicImageRiskSummary,
@@ -11,7 +12,7 @@ import {
   prepareImageRisksItems,
   suggestedMaskedFileName,
 } from '../services/imageMaskService';
-import { extractExifItemsFromFile, sanitizeExifItems } from '../services/imageExifService';
+import { applyPlatformAutoToggle, detectPlatformFromUrl } from '../services/platformDetect';
 import type { AiAnalysisResponse } from '../shared/aiTypes';
 import {
   clearStoredAnalysisHistory,
@@ -222,10 +223,28 @@ export function SidePanelApp() {
     }
   }, []);
 
+  const applyAutoPlatform = useCallback(
+    (tabUrl?: string) => {
+      const detected = detectPlatformFromUrl(tabUrl);
+      setPlatform(detected);
+      setSettings((prev) => {
+        const next = applyPlatformAutoToggle(prev, detected);
+        if (next !== prev) {
+          void persistSettings(next);
+        }
+        return next;
+      });
+    },
+    [persistSettings],
+  );
+
   useEffect(() => {
     if (!hasChromeRuntime || !chrome.runtime.onMessage) return;
 
     const listener = (message: ExtensionMessage) => {
+      if (message?.payload?.tabUrl) {
+        applyAutoPlatform(message.payload.tabUrl);
+      }
       if (message?.type === 'CONTEXT_ANALYZE_TEXT' && message.payload?.selectedText) {
         setTab('home');
         setViewMode('home');
@@ -238,7 +257,17 @@ export function SidePanelApp() {
 
     chrome.runtime.onMessage.addListener(listener);
     return () => chrome.runtime.onMessage.removeListener(listener);
-  }, []);
+  }, [applyAutoPlatform]);
+
+  useEffect(() => {
+    if (!hasChromeRuntime || !chrome.tabs?.query) return;
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs: Array<{ url?: string }>) => {
+      const url = tabs?.[0]?.url;
+      if (url) {
+        applyAutoPlatform(url);
+      }
+    });
+  }, [applyAutoPlatform]);
 
   useEffect(() => {
     (async () => {

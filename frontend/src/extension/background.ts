@@ -37,7 +37,7 @@ if (hasChrome && chrome.contextMenus?.onClicked) {
     if (chrome.runtime?.sendMessage) {
       chrome.runtime.sendMessage({
         type: 'CONTEXT_ANALYZE_TEXT',
-        payload: { selectedText },
+        payload: { selectedText, tabUrl: tab?.url },
       });
     }
 
