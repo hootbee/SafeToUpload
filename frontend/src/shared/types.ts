@@ -15,7 +15,9 @@ export interface HistoryItem {
   date: string;
   platform: Platform;
   riskLevel: RiskLevel;
+  /** 문맥 요약 (저장·상세용, 이력 목록 미리보기에는 riskScore 사용) */
   summary: string;
+  riskScore?: number | null;
 }
 
 export interface AnalysisInput {
