@@ -4,10 +4,9 @@ import type { AiAnalysisResponse } from '../shared/aiTypes';
 import type { AnalysisInput } from '../shared/types';
 import { ANALYSIS_JSON_SCHEMA_BLOCK } from '@shared/analysis-prompt-schema';
 import { heuristicPiiScan, normalizeAiResponse, parseModelJsonOutput } from './analysisMapper';
-import {
-  categoryDisplayLabel,
-  inferMaskCategoriesFromContext,
-} from './maskCategoryUtils';
+import { toImageRiskRecords } from '../../../shared/image-risk.types';
+import { parseImageRiskItems } from './imageRiskHeuristics';
+import { extractExifItemsFromFile, sanitizeExifItems } from './imageExifService';
 
 type ProgressCallback = (progress: number, status: string) => void;
 type StageCallback = (stageTitle: string, log: string, progress?: number) => void;
@@ -160,7 +159,7 @@ export async function runLocalAnalysis(
 
   const outputs = await model.generate({
     ...inputs,
-    max_new_tokens: 700,
+    max_new_tokens: 900,
     do_sample: false,
   });
 
@@ -184,21 +183,28 @@ export async function runLocalAnalysis(
   onStage?.('리라이트 제안', '안전 게시 문안(rewrite) 생성', 66);
 
   const parsed = parseModelJsonOutput(raw);
+  const rawImageRisks: Array<Record<string, unknown>> = Array.isArray(parsed?.imageRisks)
+    ? (parsed.imageRisks as Array<Record<string, unknown>>)
+    : [];
+  const modelExifItems = sanitizeExifItems(parsed?.exifItems);
+  const extractedExifItems = hasImage ? await extractExifItemsFromFile(input.imageFile ?? null) : [];
+  const imageRiskItems = hasImage ? parseImageRiskItems(rawImageRisks) : [];
 
   return normalizeAiResponse(
     {
       ...(parsed ?? {}),
       piiItems: parsed?.piiItems ?? heuristicPiiScan(input.text),
-      imageRisks:
-        hasImage && (!parsed?.imageRisks || (Array.isArray(parsed.imageRisks) && parsed.imageRisks.length === 0))
-          ? buildFallbackImageRisks(input.text)
-          : parsed?.imageRisks,
+      exifItems: extractedExifItems.length > 0 ? extractedExifItems : modelExifItems,
+      imageRisks: toImageRiskRecords(imageRiskItems),
       rawAiResponse: {
         mode: 'local',
         model: LOCAL_MODEL_ID,
         device: 'webgpu',
         dtype: 'q4f16',
         hasImage,
+        jsonParseOk: Boolean(parsed),
+        imageRisksCount: imageRiskItems.length,
+        rawContent: raw.slice(0, 16_000),
       },
     },
     input,
@@ -209,10 +215,8 @@ function buildAnalysisPrompt(input: AnalysisInput, hasImage: boolean) {
   const imageSection = hasImage
     ? `
 업로드된 이미지도 함께 분석하세요.
-imageRisks에는 이미지에서 실제로 확인된 유형만 넣으세요. 없으면 빈 배열 [].
-type은 반드시 다음 중 하나: face, license_plate, building_sign
-예: {"type":"building_sign","label":"건물 번호 간판","severity":"high","description":"114 동호수","bbox":{"x":0.35,"y":0.72,"width":0.3,"height":0.08}}
-bbox는 이미지 전체 대비 0~1 비율(x,y=좌상단, width/height=크기)입니다.
+imageRisks: 이미지에서 보이는 민감 요소마다 항목 1개. type·label은 실제로 보이는 것을 자유롭게 명명(고정 목록 아님).
+bbox 필수(0~1, x/y=좌상단). 예: {"type":"building_entrance_number","label":"건물 번호","severity":"low","bbox":{"x":0.41,"y":0.69,"width":0.18,"height":0.06}}
 `
     : '';
 
@@ -232,27 +236,7 @@ rewriteSuggestion 작성 규칙(매우 중요):
 - rewriteSuggestion 값에는 수정된 게시글 전문만 넣는다(지침·설명·대괄호 플레이스홀더 금지).
 
 ${ANALYSIS_JSON_SCHEMA_BLOCK}
-imageRisks type: face | license_plate | building_sign (bbox 0~1 optional)`;
-}
-
-function buildFallbackImageRisks(text: string): Array<Record<string, unknown>> {
-  const categories = inferMaskCategoriesFromContext([], text);
-  if (categories.size === 0) {
-    return [
-      {
-        type: 'building_sign',
-        label: '건물·간판·표식',
-        severity: 'medium',
-        description: '이미지 시각 분석 — 영역은 OwlViT·폴백 bbox로 보정됩니다.',
-      },
-    ];
-  }
-  return [...categories].map((type) => ({
-    type,
-    label: categoryDisplayLabel(type),
-    severity: 'medium',
-    description: '텍스트·이미지 맥락에서 추정된 마스킹 유형',
-  }));
+imageRisks: 항목별 type·label·bbox(0~1) 필수`;
 }
 
 export function disposeLocalModel() {

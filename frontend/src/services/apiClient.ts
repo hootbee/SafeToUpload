@@ -45,6 +45,34 @@ export async function createAnalysis(payload: CreateAnalysisPayload) {
   });
 }
 
+/** 서버 분석용 이미지 업로드 (Open WebUI 멀티모달 전송 전제) */
+export async function uploadAnalysisImage(analysisId: string, file: File) {
+  const url = `${API_BASE_URL}/analysis/${analysisId}/image`;
+  const form = new FormData();
+  form.append('image', file, file.name);
+
+  let response: Response;
+  try {
+    response = await fetch(url, { method: 'POST', body: form });
+  } catch (error) {
+    const reason = (error as Error).message || 'network error';
+    throw new Error(`이미지 업로드 실패 (${reason}). API: ${API_BASE_URL}`);
+  }
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    if (response.status === 404) {
+      throw new Error(
+        '이미지 업로드 API를 찾을 수 없습니다(404). server에서 npm run start:dev를 재시작했는지 확인하세요. ' +
+          '로그에 Mapped {/analysis/:id/image, POST} 가 있어야 합니다.',
+      );
+    }
+    throw new Error(body || `HTTP ${response.status} (image upload)`);
+  }
+
+  return response.json() as Promise<{ id: string; storedImage: string; message: string }>;
+}
+
 export async function runAnalysis(id: string, llm?: ServerLlmConfigPayload) {
   const body =
     llm && (llm.chatUrl || llm.apiKey || llm.model)

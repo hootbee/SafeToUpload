@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { AnalysisService } from './analysis.service';
 import { CreateAnalysisDto } from './dto/create-analysis.dto';
 import { RunAnalysisDto } from './dto/run-analysis.dto';
@@ -10,6 +21,22 @@ export class AnalysisController {
   @Post()
   create(@Body() dto: CreateAnalysisDto) {
     return this.analysisService.create(dto);
+  }
+
+  @Post(':id/image')
+  @UseInterceptors(
+    FileInterceptor('image', {
+      limits: { fileSize: 12 * 1024 * 1024 },
+    }),
+  )
+  uploadImage(
+    @Param('id') id: string,
+    @UploadedFile() file: { buffer: Buffer; originalname: string; mimetype?: string },
+  ) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('image file required');
+    }
+    return this.analysisService.uploadImage(id, file);
   }
 
   @Post(':id/run')

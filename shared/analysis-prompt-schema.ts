@@ -13,7 +13,15 @@ JSON 스키마:
   },
   "piiItems": [{"type":"","label":"","text":"","severity":"","description":"","location":"","policyRef":""}],
   "exifItems": [],
-  "imageRisks": [],
+  "imageRisks": [
+    {
+      "type": "id_card_address",
+      "label": "주소",
+      "severity": "critical",
+      "maskGroup": "id_card",
+      "bbox": { "x": 0.05, "y": 0.48, "width": 0.52, "height": 0.14 }
+    }
+  ],
   "contextResult": { "summary": "위험 요약 한두 문장", "uploadContext": "public_upload|private_storage|limited_share" },
   "rewriteSuggestion": "",
   "privacyMemoryCandidate": {
@@ -25,6 +33,10 @@ JSON 스키마:
     "riskWeight": 0.0
   }
 }
+
+imageRisks 규칙 (이미지가 있을 때):
+- 보이는 민감 요소마다 항목 1개. type·label은 실제로 보이는 대상을 자유롭게 명명(고정 type 목록 아님).
+- bbox는 이미지 대비 0~1 (x,y=좌상단, width/height). 보이는 것만 넣고, 없으면 빈 배열 [].
 
 privacyMemoryCandidate 규칙:
 - 실제 이메일·전화·이름·학번·주소 원문을 넣지 마세요. 유형 태그만 사용하세요.

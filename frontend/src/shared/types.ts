@@ -42,6 +42,8 @@ export interface RiskDetail {
 
 export type MaskCategory = 'face' | 'license_plate' | 'building_sign';
 
+export type MaskRegionSource = 'gemma' | 'owl' | 'layout' | 'fallback' | 'user' | 'auto';
+
 /** 이미지 대비 0~1 정규화 좌표 */
 export interface NormalizedBbox {
   x: number;
@@ -50,14 +52,35 @@ export interface NormalizedBbox {
   height: number;
 }
 
+/** 마스킹 파이프라인 단계별 탐지 내역 (디버그·UI 표시) */
+export type MaskTraceStage = 'gemma' | 'heuristic' | 'expand' | 'owl' | 'region';
+
+export interface MaskTraceEntry {
+  stage: MaskTraceStage;
+  type: string;
+  label: string;
+  detail: string;
+}
+
+export interface MaskDetectionTrace {
+  gemmaCount: number;
+  preparedCount: number;
+  owlCount: number;
+  regionCount: number;
+  entries: MaskTraceEntry[];
+}
+
 export interface MaskRegion {
   id: string;
-  category: MaskCategory;
+  /** imageRisks.type (동적) */
+  riskType: string;
+  /** OwlViT·패딩 라우팅용 (선택) */
+  category?: MaskCategory;
   label: string;
   bbox: NormalizedBbox;
   confidence?: number;
   checked: boolean;
-  source: 'auto' | 'user' | 'fallback';
+  source: MaskRegionSource;
 }
 
 export interface CategoryScores {
@@ -107,14 +130,23 @@ export interface RiskReportData {
   imagePreviewUrl?: string;
   /** 마스킹 적용 후 미리보기 (blob URL) */
   maskedImagePreviewUrl?: string;
-  /** 마스킹 대상 영역 (Gemma·OwlViT 합집합, 카테고리당 1개) */
+  /** imageRisks 항목 기반 마스킹 영역 */
   maskRegions: MaskRegion[];
+  /** 원본 imageRisks 레코드 (bbox 재탐지 재시도용) */
+  imageRisksRaw?: Array<Record<string, unknown>>;
+  /** Gemma imageRisks 스냅샷 (리포트 시점) */
+  imageRisksSnapshot?: Array<{ type: string; label: string; hasBbox: boolean }>;
   /** 마스킹 후보 생성 메타 (UI 안내용) */
   maskCandidateMeta?: {
-    gemmaCategories: MaskCategory[];
-    detectedCategories: MaskCategory[];
-    unionCategories: MaskCategory[];
-    skippedCategories?: MaskCategory[];
+    riskCount: number;
+    skippedRegionIds: string[];
+    skippedLabels: string[];
+    /** Gemma가 반환했으나 bbox 없어 체크박스를 만들지 못한 label */
+    unlocatedLabels?: string[];
+    detectionTrace?: MaskDetectionTrace;
+    /** LLM 디코딩 원문 (앞부분) */
+    llmRawPreview?: string;
+    parseNote?: string;
   };
   contextSummary: string;
   memoryPattern: {
@@ -124,6 +156,8 @@ export interface RiskReportData {
   };
   originalText: string;
   rewrittenText: string;
+  /** 모델 원본 응답(raw content/json) 디버그 뷰 */
+  rewriteRawResponse?: string;
 }
 
 export interface ServerLlmSettings {

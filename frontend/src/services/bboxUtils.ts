@@ -99,8 +99,8 @@ export function sanitizeMaskBbox(bbox: NormalizedBbox): NormalizedBbox {
   if (![x, y, width, height].every(Number.isFinite)) {
     return { x: 0.35, y: 0.65, width: 0.3, height: 0.12 };
   }
-  width = Math.max(0.03, Math.min(1, width));
-  height = Math.max(0.03, Math.min(1, height));
+  width = Math.max(0.02, Math.min(1, width));
+  height = Math.max(0.02, Math.min(1, height));
   x = Math.max(0, Math.min(1 - width, x));
   y = Math.max(0, Math.min(1 - height, y));
   return { x, y, width, height };
@@ -129,16 +129,19 @@ export function bboxToPixelRect(
   return { x: ix, y: iy, w: iw, h: ih };
 }
 
-const MAX_MASK_BBOX: Record<MaskCategory, { maxW: number; maxH: number }> = {
-  face: { maxW: 0.48, maxH: 0.42 },
-  license_plate: { maxW: 0.32, maxH: 0.16 },
-  building_sign: { maxW: 0.2, maxH: 0.09 },
-};
+const DEFAULT_BBOX_LIMITS = { maxW: 0.82, maxH: 0.82 };
 
-/** OwlViT·Gemma가 과하게 잡은 박스를 카테고리별 상한으로 축소 */
-export function tightenMaskBbox(bbox: NormalizedBbox, category: MaskCategory): NormalizedBbox {
-  const { maxW, maxH } = MAX_MASK_BBOX[category];
+/** OwlViT·Gemma가 과하게 잡은 박스를 상한으로 축소 (type별 하드코딩 없음) */
+export function tightenMaskBbox(
+  bbox: NormalizedBbox,
+  _categoryOrRiskType?: MaskCategory | string,
+): NormalizedBbox {
+  const limits = DEFAULT_BBOX_LIMITS;
+  const { maxW, maxH } = limits;
   let { x, y, width, height } = bbox;
+  const aspect = width / Math.max(0.0001, height);
+  if (aspect > 12) width = Math.min(width, height * 12);
+  if (aspect < 1 / 12) height = Math.min(height, width * 12);
   if (width <= maxW && height <= maxH) {
     return { x: clamp01(x), y: clamp01(y), width, height };
   }

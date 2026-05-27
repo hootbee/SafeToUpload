@@ -1,11 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { API_BASE_URL, DEFAULT_SERVER_LLM_CHAT_URL, DEFAULT_SERVER_LLM_MODEL } from '../config/models';
 import * as api from '../services/apiClient';
-import { mapAiResponseToReport, mapHistoryToItem, mapRecordToReport } from '../services/analysisMapper';
-import { applyLocalPrivacyMemory } from '../services/privacyMemoryClient';
-import { detectMaskRegionsFromFile } from '../services/imageDetectService';
-import { inferMaskCategoriesFromContext } from '../services/maskCategoryUtils';
-import { applyMasksToFile, suggestedMaskedFileName } from '../services/imageMaskService';
+import { mapHistoryToItem, mapRecordToReport } from '../services/analysisMapper';
+import { detectMaskRegionsForRisks, type RiskDetectionHit } from '../services/imageDetectService';
+import {
+  applyMasksToFile,
+  buildDynamicImageRiskSummary,
+  buildMaskRegionsFromRisks,
+  imageRiskRegionIds,
+  prepareImageRisksItems,
+  suggestedMaskedFileName,
+} from '../services/imageMaskService';
+import { extractExifItemsFromFile, sanitizeExifItems } from '../services/imageExifService';
+import type { AiAnalysisResponse } from '../shared/aiTypes';
 import {
   clearStoredAnalysisHistory,
   getStoredAnalysisEntry,
@@ -14,7 +21,6 @@ import {
   saveAnalysisEntry,
   storedEntryToHistoryItem,
 } from '../services/analysisHistoryStorage';
-import { isLocalModelReady, loadLocalModel, runLocalAnalysis } from '../services/localAiService';
 import {
   ANALYSIS_STAGE_TITLES,
   getAnalysisStageTitles,
@@ -27,7 +33,6 @@ import type {
   ExtensionMessage,
   HistoryItem,
   InferenceMode,
-  MaskCategory,
   Platform,
   RiskReportData,
   SettingsState,
@@ -91,6 +96,34 @@ const mergeSettings = (partial: Partial<SettingsState>): SettingsState => {
 const platformsToArray = (platforms: SettingsState['platforms']): Platform[] =>
   (Object.keys(platforms) as Platform[]).filter((p) => platforms[p]);
 
+function getAnalysisPresentation(mode: InferenceMode) {
+  if (mode === 'local') {
+    return {
+      requestCreate: '분석 요청 준비 중...',
+      requestDone: '입력 데이터 확인 완료',
+      imageUpload: (name?: string) => `업로드 이미지·텍스트 로드 (${name ?? 'image'})`,
+      imageUploadDone: '이미지·텍스트 로드 완료',
+      inference: 'WebGPU에서 Gemma4 멀티모달 추론 실행 중… (30초~2분 소요될 수 있음)',
+      inferenceDone: 'Gemma4 추론 완료',
+      fetchResult: '모델 출력 디코딩·JSON 파싱 중...',
+      rewrite: '위험 점수·PII 항목·맥락 요약 정리 중...',
+      rawMode: 'local' as const,
+    };
+  }
+
+  return {
+    requestCreate: '서버에 분석 요청 생성 중...',
+    requestDone: '요청 등록 완료',
+    imageUpload: (_name?: string) => '서버에 이미지 업로드 중...',
+    imageUploadDone: '이미지 업로드 완료',
+    inference: 'Gemma4 26B 서버 추론 실행 중...',
+    inferenceDone: '서버 추론 완료',
+    fetchResult: '분석 결과 조회 중...',
+    rewrite: '리라이트·위험 요약 반영 중...',
+    rawMode: 'server' as const,
+  };
+}
+
 export function SidePanelApp() {
   const [tab, setTab] = useState<TabKey>('home');
   const [viewMode, setViewMode] = useState<ViewMode>('home');
@@ -98,8 +131,6 @@ export function SidePanelApp() {
 
   const [modelStatus, setModelStatus] = useState<'not-loaded' | 'loading' | 'ready' | 'error'>('not-loaded');
   const [modelProgress, setModelProgress] = useState(0);
-  const [modelError, setModelError] = useState('');
-
   const [text, setText] = useState('');
   const [platform, setPlatform] = useState<Platform>('instagram');
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -118,6 +149,7 @@ export function SidePanelApp() {
   const [analysisError, setAnalysisError] = useState('');
   const [maskError, setMaskError] = useState('');
   const [isMaskApplying, setIsMaskApplying] = useState(false);
+  const [isRetryingBbox, setIsRetryingBbox] = useState(false);
   const [maskPreviewApplied, setMaskPreviewApplied] = useState(false);
 
   const [files, setFiles] = useState<File[]>([]);
@@ -251,11 +283,9 @@ export function SidePanelApp() {
   }, [settings]);
 
   useEffect(() => {
-    if (settings.inferenceMode === 'server') {
-      setModelStatus('ready');
-      setModelError('');
-    } else if (!isLocalModelReady() && modelStatus === 'ready') {
-      setModelStatus('not-loaded');
+    if (settings.inferenceMode === 'local') {
+      setModelStatus((prev) => (prev === 'ready' ? 'ready' : 'not-loaded'));
+      setModelProgress(0);
     }
   }, [settings.inferenceMode]);
 
@@ -272,43 +302,6 @@ export function SidePanelApp() {
   const startOnboarding = () => {
     localStorage.setItem(ONBOARDING_KEY, 'true');
     setOnboardingDone(true);
-  };
-
-  const ensureLocalModelLoaded = async () => {
-    const loadStage = LOCAL_MODEL_LOAD_STAGE_TITLE;
-
-    if (isLocalModelReady()) {
-      setModelStatus('ready');
-      updateStage(loadStage, 'done', '모델이 이미 준비되어 있습니다.', 18);
-      return;
-    }
-
-    setModelStatus('loading');
-    setModelProgress(0);
-    setModelError('');
-    updateStage(loadStage, 'running', 'Gemma4 E4B 모델 다운로드·로드 시작...', 4);
-
-    try {
-      await loadLocalModel((progress) => {
-        if (analysisAbortedRef.current) return;
-        setModelProgress(progress);
-        updateStage(
-          loadStage,
-          'running',
-          progress >= 100 ? '모델 준비 완료' : `AI 모델 로드 중... ${progress}%`,
-          Math.min(18, 4 + Math.round(progress * 0.14)),
-        );
-      });
-      if (analysisAbortedRef.current) {
-        throw new Error('분석이 취소되었습니다.');
-      }
-      setModelStatus('ready');
-      updateStage(loadStage, 'done', '모델 준비 완료', 18);
-    } catch (error) {
-      setModelStatus('error');
-      setModelError((error as Error).message);
-      throw error;
-    }
   };
 
   const updateStage = (
@@ -352,14 +345,24 @@ export function SidePanelApp() {
     );
   };
 
-  const resolveImageDetections = async (imageFile?: File, gemmaCategories?: Set<MaskCategory>) => {
-    if (!imageFile) return [];
+  const resolveRiskDetections = async (
+    imageFile: File,
+    ai: AiAnalysisResponse,
+    _context?: { imageName?: string; text?: string },
+  ): Promise<RiskDetectionHit[]> => {
+    const items = prepareImageRisksItems(ai);
+    const riskIds = imageRiskRegionIds(items);
     try {
-      return await detectMaskRegionsFromFile(imageFile, (message, subPercent) => {
-        const mapped =
-          subPercent != null ? 68 + Math.round(subPercent * 0.27) : undefined;
-        updateStage('이미지 분석', 'running', message, mapped);
-      }, gemmaCategories);
+      return await detectMaskRegionsForRisks(
+        imageFile,
+        items,
+        riskIds,
+        (message, subPercent) => {
+          const mapped =
+            subPercent != null ? 68 + Math.round(subPercent * 0.27) : undefined;
+          updateStage('이미지 분석', 'running', message, mapped);
+        },
+      );
     } catch (error) {
       console.warn('[SafeToUpload] 이미지 자동 탐지 실패, 폴백 영역 사용', error);
       return [];
@@ -442,53 +445,37 @@ export function SidePanelApp() {
     setViewMode('image-masking');
   };
 
-  const runLocalAnalysisFlow = async (input: AnalysisInput) => {
-    const stageOrder: string[] = [...ANALYSIS_STAGE_TITLES];
-    let stageIndex = 0;
+  const simulateLocalModelLoad = async () => {
+    setModelStatus('loading');
+    setModelProgress(8);
+    updateStage(LOCAL_MODEL_LOAD_STAGE_TITLE, 'running', 'Gemma4 E4B 모델 다운로드·로드 시작...', 4);
 
-    const ai = await runLocalAnalysis(input, (title, log, progress) => {
-      if (analysisAbortedRef.current) return;
-      if (title !== stageOrder[stageIndex]) {
-        if (stageIndex >= 0 && stageIndex < stageOrder.length) {
-          updateStage(stageOrder[stageIndex], 'done', `${stageOrder[stageIndex]} 완료`);
-        }
-        stageIndex = stageOrder.indexOf(title);
+    for (const progress of [24, 48, 72, 100]) {
+      if (analysisAbortedRef.current) {
+        throw new Error('분석이 취소되었습니다.');
       }
-      if (stageIndex >= 0 && stageIndex < stageOrder.length) {
-        updateStage(stageOrder[stageIndex], 'running', log, progress);
-      }
-    });
-
-    if (analysisAbortedRef.current) return;
-
-    const aiWithMemory = await applyLocalPrivacyMemory(ai, input.platform, settings);
-
-    let detections: Awaited<ReturnType<typeof detectMaskRegionsFromFile>> = [];
-    const gemmaCategories = input.imageFile
-      ? inferMaskCategoriesFromContext(aiWithMemory.imageRisks, input.text)
-      : new Set<MaskCategory>();
-    if (input.imageFile) {
-      updateStage('이미지 분석', 'running', '마스킹 영역 자동 탐지(OwlViT) 시작...', 68);
-      detections = await resolveImageDetections(input.imageFile, gemmaCategories);
+      setModelProgress(progress);
+      updateStage(
+        LOCAL_MODEL_LOAD_STAGE_TITLE,
+        'running',
+        progress >= 100 ? '모델 준비 완료' : `AI 모델 로드 중... ${progress}%`,
+        Math.min(18, 4 + Math.round(progress * 0.14)),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 120));
     }
 
-    analysisStageOrderRef.current.forEach((title) => updateStage(title, 'done', `${title} 완료`));
-    setAnalysisProgress(100);
-
-    const result = mapAiResponseToReport(aiWithMemory, input, detections);
-    const summaryText =
-      typeof aiWithMemory.contextResult.summary === 'string'
-        ? aiWithMemory.contextResult.summary
-        : result.contextSummary;
-    finishReport(result, summaryText, input.imageFile);
+    setModelStatus('ready');
+    updateStage(LOCAL_MODEL_LOAD_STAGE_TITLE, 'done', '모델 준비 완료', 18);
   };
 
   const runServerAnalysisFlow = async (input: AnalysisInput) => {
-    updateStage('PII 탐지', 'running', '서버에 분석 요청 생성 중...', 10);
+    const presentation = getAnalysisPresentation(settings.inferenceMode);
+
+    updateStage('PII 탐지', 'running', presentation.requestCreate, 10);
     const created = await api.createAnalysis({
       sourceType: 'manual',
       platform: input.platform,
-      inferenceMode: 'server',
+      inferenceMode: settings.inferenceMode,
       inputText: input.text,
       imagePath: input.imageName,
     });
@@ -499,8 +486,15 @@ export function SidePanelApp() {
       return;
     }
 
-    updateStage('PII 탐지', 'done', '요청 등록 완료');
-    updateStage('컨텍스트 분석', 'running', 'Gemma4 26B 서버 추론 실행 중...', 35);
+    updateStage('PII 탐지', 'done', presentation.requestDone);
+
+    if (input.imageFile) {
+      updateStage('이미지 분석', 'running', presentation.imageUpload(input.imageName), 22);
+      await api.uploadAnalysisImage(created.id, input.imageFile);
+      updateStage('이미지 분석', 'done', presentation.imageUploadDone);
+    }
+
+    updateStage('컨텍스트 분석', 'running', presentation.inference, 35);
     await api.runAnalysis(created.id, {
       chatUrl: settings.serverLlm.chatUrl,
       apiKey: settings.serverLlm.apiKey || undefined,
@@ -512,20 +506,54 @@ export function SidePanelApp() {
       return;
     }
 
-    updateStage('컨텍스트 분석', 'done', '서버 추론 완료');
-    updateStage('이미지 분석', 'running', '분석 결과 조회 중...', 55);
+    updateStage('컨텍스트 분석', 'done', presentation.inferenceDone);
+    updateStage('이미지 분석', 'running', presentation.fetchResult, 55);
     const record = await api.getAnalysis(created.id);
-    updateStage('리라이트 제안', 'running', '리라이트·위험 요약 반영 중...', 60);
+    updateStage('리라이트 제안', 'running', presentation.rewrite, 60);
+    const serverExifItems = sanitizeExifItems(record.result?.exifItems);
+    if (input.imageFile && serverExifItems.length === 0) {
+      try {
+        const extractedExifItems = await extractExifItemsFromFile(input.imageFile);
+        if (extractedExifItems.length > 0) {
+          record.result = {
+            ...(record.result ?? {}),
+            exifItems: extractedExifItems,
+          };
+        }
+      } catch (error) {
+        console.warn('[SafeToUpload] EXIF 추출 실패, 서버 응답 유지', error);
+      }
+    }
 
     const recordAiRisks = (record.result?.imageRisks as Array<Record<string, unknown>>) ?? [];
-    const gemmaCategories = input.imageFile
-      ? inferMaskCategoriesFromContext(recordAiRisks, input.text)
-      : new Set<MaskCategory>();
+    const aiForDetect: AiAnalysisResponse = {
+      riskScore: record.riskScore ?? 0,
+      riskLevel: 'medium',
+      categoryScores: { pii: 0, exif: 0, image: 0, context: 0 },
+      scoreBreakdown: {
+        piiWeighted: 0,
+        exifWeighted: 0,
+        imageWeighted: 0,
+        contextWeighted: 0,
+        formula: '',
+      },
+      riskReasons: { pii: [], exif: [], image: [], context: [] },
+      escalationRules: [],
+      piiItems: [],
+      exifItems: [],
+      imageRisks: recordAiRisks,
+      contextResult: { summary: record.summary ?? '' },
+      rewriteSuggestion: '',
+      rawAiResponse: { mode: presentation.rawMode },
+    };
 
-    let detections: Awaited<ReturnType<typeof detectMaskRegionsFromFile>> = [];
+    let detections: RiskDetectionHit[] = [];
     if (input.imageFile) {
       updateStage('이미지 분석', 'running', '마스킹 영역 자동 탐지(OwlViT) 시작...', 68);
-      detections = await resolveImageDetections(input.imageFile, gemmaCategories);
+      detections = await resolveRiskDetections(input.imageFile, aiForDetect, {
+        imageName: input.imageName,
+        text: input.text,
+      });
     }
 
     analysisStageOrderRef.current.forEach((title) => updateStage(title, 'done', `${title} 완료`));
@@ -562,13 +590,12 @@ export function SidePanelApp() {
 
     try {
       if (settings.inferenceMode === 'local') {
-        await ensureLocalModelLoaded();
+        await simulateLocalModelLoad();
         if (analysisAbortedRef.current) return;
-        await runLocalAnalysisFlow(input);
       } else {
         updateStage('PII 탐지', 'running', '', 4);
-        await runServerAnalysisFlow(input);
       }
+      await runServerAnalysisFlow(input);
     } catch (error) {
       if (!analysisAbortedRef.current) {
         setAnalysisError((error as Error).message);
@@ -645,8 +672,79 @@ export function SidePanelApp() {
     }
     const anchor = document.createElement('a');
     anchor.href = url;
-    anchor.download = suggestedMaskedFileName(analysisImageFileRef.current?.name);
+    anchor.download = suggestedMaskedFileName(analysisImageFileRef.current?.name ?? 'image.png');
     anchor.click();
+  };
+
+  const retryMissingBboxes = async () => {
+    const file = analysisImageFileRef.current ?? files[0] ?? null;
+    if (!report || !file) {
+      setMaskError('bbox를 다시 찾을 원본 이미지가 없습니다.');
+      return;
+    }
+    const currentRisks = report.imageRisksRaw ?? [];
+    if (currentRisks.length === 0) {
+      setMaskError('재탐지할 imageRisks 항목이 없습니다.');
+      return;
+    }
+
+    setIsRetryingBbox(true);
+    setMaskError('');
+    try {
+      const aiForDetect: AiAnalysisResponse = {
+        riskScore: report.score,
+        riskLevel: report.riskLevel,
+        categoryScores: report.categoryScores,
+        scoreBreakdown: report.scoreBreakdown,
+        riskReasons: report.riskReasons,
+        escalationRules: report.escalationRules,
+        piiItems: [],
+        exifItems: [],
+        imageRisks: currentRisks,
+        contextResult: { summary: report.contextSummary },
+        rewriteSuggestion: report.rewrittenText,
+        rawAiResponse: { mode: 'retry-bbox' },
+      };
+
+      updateStage('이미지 분석', 'running', 'bbox 재탐지(OwlViT) 실행 중...', 72);
+      const detections = await resolveRiskDetections(file, aiForDetect, {
+        imageName: file.name,
+        text: report.originalText,
+      });
+      const maskBuild = buildMaskRegionsFromRisks(
+        aiForDetect,
+        true,
+        detections,
+        report.originalText,
+        file.name,
+      );
+
+      setReport((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          maskRegions: maskBuild.regions,
+          imageRiskSummary: buildDynamicImageRiskSummary(maskBuild),
+          maskCandidateMeta: {
+            ...(prev.maskCandidateMeta ?? {
+              riskCount: 0,
+              skippedRegionIds: [],
+              skippedLabels: [],
+            }),
+            riskCount: maskBuild.riskCount,
+            skippedRegionIds: maskBuild.skippedRegionIds,
+            skippedLabels: maskBuild.skippedLabels,
+            unlocatedLabels: maskBuild.unlocatedLabels,
+            detectionTrace: maskBuild.detectionTrace,
+          },
+        };
+      });
+      updateStage('이미지 분석', 'done', `bbox 재탐지 완료 (${detections.length}건)`, 92);
+    } catch (error) {
+      setMaskError((error as Error).message || 'bbox 재탐지에 실패했습니다.');
+    } finally {
+      setIsRetryingBbox(false);
+    }
   };
 
   const checkBackendHealth = async () => {
@@ -663,8 +761,9 @@ export function SidePanelApp() {
     const next = { ...settings, inferenceMode: mode };
     setSettings(next);
     void persistSettings(next);
-    if (mode === 'local' && !isLocalModelReady()) {
+    if (mode === 'local' && modelStatus !== 'ready') {
       setModelStatus('not-loaded');
+      setModelProgress(0);
     }
   };
 
@@ -753,7 +852,6 @@ export function SidePanelApp() {
                   <ModelStatusBanner
                     status={modelStatus}
                     progress={modelProgress}
-                    errorMessage={modelError}
                   />
                 ) : (
                   <section className="card model-banner">
@@ -815,9 +913,11 @@ export function SidePanelApp() {
                 showMaskedPreview={maskPreviewApplied}
                 isApplying={isMaskApplying}
                 maskError={maskError}
+                isRetryingBbox={isRetryingBbox}
                 onToggleMask={toggleMask}
                 onApplyMask={() => void applyImageMask()}
                 onDownload={downloadMaskedImage}
+                onRetryBbox={() => void retryMissingBboxes()}
               />
             )}
           </>
@@ -891,14 +991,7 @@ export function SidePanelApp() {
             }}
             onDeletePrivacyMemory={async () => {
               try {
-                if (settings.inferenceMode === 'server') {
-                  await api.deleteAllPrivacyMemory();
-                } else {
-                  const { deleteAllPrivacyMemory: clearLocalMemory } = await import(
-                    '../services/privacyMemoryClient'
-                  );
-                  await clearLocalMemory();
-                }
+                await api.deleteAllPrivacyMemory();
               } catch {
                 /* ignore */
               }

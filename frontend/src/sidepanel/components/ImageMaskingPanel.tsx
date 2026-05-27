@@ -1,5 +1,4 @@
 import type { RiskReportData } from '../../shared/types';
-import { imageRiskSummaryForCategories } from '../../services/maskCategoryUtils';
 import { IoImageOutline } from 'react-icons/io5';
 import { ImagePreviewBox } from './ImagePreviewBox';
 
@@ -10,9 +9,11 @@ interface Props {
   showMaskedPreview: boolean;
   isApplying: boolean;
   maskError: string;
+  isRetryingBbox: boolean;
   onToggleMask: (id: string) => void;
   onApplyMask: () => void;
   onDownload: () => void;
+  onRetryBbox: () => void;
 }
 
 export function ImageMaskingPanel({
@@ -21,21 +22,40 @@ export function ImageMaskingPanel({
   showMaskedPreview,
   isApplying,
   maskError,
+  isRetryingBbox,
   onToggleMask,
   onApplyMask,
   onDownload,
-}: Props) {
+  onRetryBbox,
+}: Readonly<Props>) {
   const previewUrl =
     showMaskedPreview && report.maskedImagePreviewUrl
       ? report.maskedImagePreviewUrl
       : report.imagePreviewUrl;
   const canApply = hasSourceImage && report.maskRegions.some((r) => r.checked) && !isApplying;
   const canDownload = showMaskedPreview && Boolean(report.maskedImagePreviewUrl);
-  const skipped = report.maskCandidateMeta?.skippedCategories;
+  const unlocatedLabels = report.maskCandidateMeta?.unlocatedLabels;
+  const numberedMaskLabels = (() => {
+    const normalizeLabelKey = (label: string) => label.trim().toLowerCase();
+    const totalByLabel = new Map<string, number>();
+    for (const region of report.maskRegions) {
+      const key = normalizeLabelKey(region.label);
+      totalByLabel.set(key, (totalByLabel.get(key) ?? 0) + 1);
+    }
+
+    const seenByLabel = new Map<string, number>();
+    return report.maskRegions.map((region) => {
+      const key = normalizeLabelKey(region.label);
+      const total = totalByLabel.get(key) ?? 0;
+      const seen = (seenByLabel.get(key) ?? 0) + 1;
+      seenByLabel.set(key, seen);
+      return total > 1 ? `${region.label}${seen}` : region.label;
+    });
+  })();
 
   return (
     <section className="card">
-      <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '18px', margin: '0 0 16px 0' }}>
+      <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '18px', margin: '0 0 8px 0' }}>
         <IoImageOutline size={18} /> 이미지 마스킹
       </h2>
       <div style={{ marginBottom: '12px' }}>
@@ -63,12 +83,29 @@ export function ImageMaskingPanel({
       )}
       {report.maskRegions.length === 0 && hasSourceImage && (
         <p style={{ fontSize: '13px', color: '#b45309', margin: '0 0 12px 0', lineHeight: 1.5 }}>
-          마스킹할 수 있는 항목이 없습니다. 다른 이미지로 다시 분석해 보세요.
+          마스킹할 bbox가 있는 항목이 없습니다. Gemma imageRisks에 bbox가 포함돼야 체크박스가
+          생깁니다. LLM 원문을 확인하세요.
         </p>
+      )}
+      {unlocatedLabels && unlocatedLabels.length > 0 && (
+        <>
+          <p style={{ fontSize: '12px', color: '#b45309', margin: '0 0 8px 0', lineHeight: 1.5 }}>
+            탐지됐으나 bbox 없음: {unlocatedLabels.join(', ')} (OwlViT도 실패 시 영역 미생성)
+          </p>
+          <button
+            className="btn-text"
+            type="button"
+            onClick={onRetryBbox}
+            disabled={!hasSourceImage || isRetryingBbox}
+            style={{ marginBottom: '12px' }}
+          >
+            {isRetryingBbox ? 'bbox 재탐지 중...' : 'bbox 다시 찾기'}
+          </button>
+        </>
       )}
       {report.maskRegions.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
-          {report.maskRegions.map((mask) => (
+          {report.maskRegions.map((mask, index) => (
             <label
               key={mask.id}
               style={{
@@ -92,16 +129,10 @@ export function ImageMaskingPanel({
                 disabled={!hasSourceImage}
                 onChange={() => onToggleMask(mask.id)}
               />
-              {mask.label}
+              {numberedMaskLabels[index]}
             </label>
           ))}
         </div>
-      )}
-      {skipped && skipped.length > 0 && (
-        <p style={{ fontSize: '12px', color: '#b45309', margin: '0 0 12px 0', lineHeight: 1.5 }}>
-          {imageRiskSummaryForCategories(skipped)} — 자동 위치를 찾지 못해{' '}
-          <strong>추정 영역(폴백)</strong>으로 표시했습니다. 적용 전 미리보기로 범위를 확인하세요.
-        </p>
       )}
       {maskError && (
         <p style={{ color: '#dc2626', fontSize: '13px', margin: '0 0 12px 0' }}>{maskError}</p>

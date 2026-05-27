@@ -1,9 +1,11 @@
 import { Injectable, Logger, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InferenceMode } from '../common/enums/inference-mode.enum';
+import { ImageStorageService } from '../storage/image-storage.service';
 import { LlmConfigDto } from './dto/llm-config.dto';
 import { AiAnalysisRequestDto } from './dto/ai-analysis-request.dto';
-import { buildServerAnalysisPrompt } from './utils/analysis-prompt.util';
+import { buildRewriteRefinePrompt, buildServerAnalysisPrompt } from './utils/analysis-prompt.util';
+import { buildUserChatMessage } from './utils/llm-message.util';
 import {
   extractChatCompletionContent,
   normalizeServerAiResponse,
@@ -25,7 +27,10 @@ const LEGACY_SHORT_TIMEOUT_MS = 120_000;
 export class AiProxyService implements OnModuleInit {
   private readonly logger = new Logger(AiProxyService.name);
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly imageStorage: ImageStorageService,
+  ) {}
 
   onModuleInit() {
     const timeoutMs = this.resolveLlmTimeoutMs();
@@ -74,6 +79,79 @@ export class AiProxyService implements OnModuleInit {
         this.configService.get<string>('AI_LLM_MODEL', '') ||
         this.configService.get<string>('AI_SERVER_MODEL', 'gemma4:26b'),
     };
+  }
+
+  private parseRewriteOnlyResponse(rawContent: string): string | undefined {
+    const text = rawContent.trim();
+    if (!text) return undefined;
+    try {
+      const parsed = JSON.parse(text) as { rewriteSuggestion?: unknown };
+      if (typeof parsed.rewriteSuggestion === 'string' && parsed.rewriteSuggestion.trim()) {
+        return parsed.rewriteSuggestion.trim();
+      }
+    } catch {
+      const jsonMatch = text.match(/"rewriteSuggestion"\s*:\s*"((?:\\.|[^"\\])*)"/);
+      if (jsonMatch) {
+        try {
+          const restored = JSON.parse(`"${jsonMatch[1]}"`) as string;
+          if (restored.trim()) return restored.trim();
+        } catch {
+          return undefined;
+        }
+      }
+    }
+    return undefined;
+  }
+
+  private async requestRewriteRefinement(params: {
+    llm: ResolvedLlmConfig;
+    timeoutMs: number;
+    platform: string;
+    originalText?: string;
+    draftRewrite?: string;
+  }): Promise<string | undefined> {
+    if (!params.originalText?.trim()) return undefined;
+
+    const prompt = buildRewriteRefinePrompt({
+      platform: params.platform,
+      originalText: params.originalText,
+      draftRewrite: params.draftRewrite,
+    });
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), params.timeoutMs);
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (params.llm.apiKey) headers.Authorization = `Bearer ${params.llm.apiKey}`;
+
+    try {
+      const response = await fetch(params.llm.chatUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          model: params.llm.model,
+          messages: [{ role: 'user', content: prompt }],
+          stream: false,
+          max_tokens: 700,
+        }),
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        const body = await response.text().catch(() => '');
+        this.logger.warn(
+          `Rewrite refine request failed (${response.status})${body ? `: ${body.slice(0, 180)}` : ''}`,
+        );
+        return undefined;
+      }
+
+      const payload = (await response.json()) as unknown;
+      const rawContent = extractChatCompletionContent(payload);
+      return this.parseRewriteOnlyResponse(rawContent);
+    } catch (error) {
+      this.logger.warn(`Rewrite refine skipped: ${(error as Error).message}`);
+      return undefined;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   async analyze(
@@ -149,6 +227,7 @@ export class AiProxyService implements OnModuleInit {
       model: llm.model,
       chatUrl: llm.chatUrl,
       platform: input.platform,
+      imagePath: input.imagePath,
     });
   }
 
@@ -164,15 +243,41 @@ export class AiProxyService implements OnModuleInit {
     }
 
     const timeoutMs = this.resolveLlmTimeoutMs();
-    const maxTokens = Number(this.configService.get<string>('AI_LLM_MAX_TOKENS', '1024'));
-    const prompt = buildServerAnalysisPrompt({
-      platform: input.platform,
-      inputText: input.inputText,
-      imagePath: input.imagePath,
-    });
+    const defaultMaxTokens = Number(this.configService.get<string>('AI_LLM_MAX_TOKENS', '1024'));
+
+    let imageDataUrl: string | undefined;
+    if (input.analysisId) {
+      const storedPath = this.imageStorage.findStoredImagePath(input.analysisId);
+      const loaded = storedPath ? this.imageStorage.readAsDataUrl(storedPath) : null;
+      imageDataUrl = loaded?.dataUrl;
+      if (input.imagePath && !imageDataUrl) {
+        this.logger.warn(
+          `Analysis ${input.analysisId}: imagePath set but no file in upload dir — vision skipped`,
+        );
+      }
+    }
+
+    const visionAttached = Boolean(imageDataUrl);
+    const maxTokens = visionAttached
+      ? Number(this.configService.get<string>('AI_LLM_MAX_TOKENS_VISION', '2048')) ||
+        Math.max(defaultMaxTokens, 2048)
+      : defaultMaxTokens;
+
+    const promptProfileSetting = this.configService.get<string>('AI_LLM_PROMPT_PROFILE', 'auto');
+    const { prompt, profile: promptProfile } = buildServerAnalysisPrompt(
+      {
+        platform: input.platform,
+        inputText: input.inputText,
+        imagePath: input.imagePath,
+        visionAttached,
+      },
+      promptProfileSetting,
+    );
+
+    const messages = buildUserChatMessage(prompt, imageDataUrl);
 
     this.logger.log(
-      `LLM request: model=${llm.model}, timeoutMs=${timeoutMs}, maxTokens=${maxTokens}`,
+      `LLM request: model=${llm.model}, vision=${visionAttached}, promptProfile=${promptProfile}, timeoutMs=${timeoutMs}, maxTokens=${maxTokens}`,
     );
 
     const controller = new AbortController();
@@ -189,7 +294,7 @@ export class AiProxyService implements OnModuleInit {
         headers,
         body: JSON.stringify({
           model: llm.model,
-          messages: [{ role: 'user', content: prompt }],
+          messages,
           stream: false,
           max_tokens: Number.isFinite(maxTokens) && maxTokens > 0 ? maxTokens : 1024,
         }),
@@ -206,6 +311,31 @@ export class AiProxyService implements OnModuleInit {
       const payload = (await response.json()) as unknown;
       const rawContent = extractChatCompletionContent(payload);
       const parsed = parseModelJsonOutput(rawContent);
+      const imageRisksCount = Array.isArray(parsed?.imageRisks) ? parsed.imageRisks.length : 0;
+      const draftRewrite =
+        typeof parsed?.rewriteSuggestion === 'string' ? parsed.rewriteSuggestion : undefined;
+      const refinedRewrite = await this.requestRewriteRefinement({
+        llm,
+        timeoutMs,
+        platform: input.platform,
+        originalText: input.inputText,
+        draftRewrite,
+      });
+      if (parsed && refinedRewrite) {
+        parsed.rewriteSuggestion = refinedRewrite;
+      }
+
+      const rawMeta = {
+        mode: 'server' as const,
+        model: llm.model,
+        chatUrl: llm.chatUrl,
+        visionAttached,
+        promptProfile,
+        jsonParseOk: Boolean(parsed),
+        imageRisksCount,
+        rewriteRefined: Boolean(refinedRewrite),
+        rawContent: rawContent.slice(0, 16_000),
+      };
 
       if (!parsed) {
         throw new ServiceUnavailableException(
@@ -217,6 +347,8 @@ export class AiProxyService implements OnModuleInit {
         model: llm.model,
         chatUrl: llm.chatUrl,
         platform: input.platform,
+        imagePath: input.imagePath,
+        rawAiResponseExtra: rawMeta,
       });
     } catch (error) {
       if ((error as Error).name === 'AbortError') {

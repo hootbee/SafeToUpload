@@ -1,5 +1,23 @@
 {
   "extends": "./tsconfig.json",
-  "include": ["src", "../shared/**/*.ts"],
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "resolvePackageJsonExports": false,
+    "incremental": false,
+    "baseUrl": "./",
+    "paths": {
+      "@shared/risk-scoring": ["src/_shared/risk-scoring/index"],
+      "@shared/risk-scoring/*": ["src/_shared/risk-scoring/*"],
+      "@shared/privacy-memory": ["src/_shared/privacy-memory/index"],
+      "@shared/privacy-memory/*": ["src/_shared/privacy-memory/*"],
+      "@shared/analysis-prompt-schema": ["src/_shared/analysis-prompt-schema"],
+      "@shared/prompts": ["src/_shared/prompts/index.ts"],
+      "@shared/prompts/*": ["src/_shared/prompts/*"]
+    }
+  },
+  "include": ["src/**/*"],
   "exclude": ["node_modules", "test", "dist", "**/*spec.ts"]
 }
