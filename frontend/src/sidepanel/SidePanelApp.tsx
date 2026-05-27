@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { API_BASE_URL, DEFAULT_SERVER_LLM_CHAT_URL, DEFAULT_SERVER_LLM_MODEL } from '../config/models';
 import * as api from '../services/apiClient';
+<<<<<<< HEAD
 import { mapHistoryToItem, mapRecordToReport } from '../services/analysisMapper';
 import { detectMaskRegionsForRisks, type RiskDetectionHit } from '../services/imageDetectService';
 import {
@@ -13,6 +14,14 @@ import {
 } from '../services/imageMaskService';
 import { extractExifItemsFromFile, sanitizeExifItems } from '../services/imageExifService';
 import type { AiAnalysisResponse } from '../shared/aiTypes';
+=======
+import { mapAiResponseToReport, mapHistoryToItem, mapRecordToReport } from '../services/analysisMapper';
+import { applyLocalPrivacyMemory } from '../services/privacyMemoryClient';
+import { detectMaskRegionsFromFile } from '../services/imageDetectService';
+import { inferMaskCategoriesFromContext } from '../services/maskCategoryUtils';
+import { applyPlatformAutoToggle, detectPlatformFromUrl } from '../services/platformDetect';
+import { applyMasksToFile, suggestedMaskedFileName } from '../services/imageMaskService';
+>>>>>>> refs/rewritten/MERGE-브랜치-병합
 import {
   clearStoredAnalysisHistory,
   getStoredAnalysisEntry,
@@ -222,10 +231,28 @@ export function SidePanelApp() {
     }
   }, []);
 
+  const applyAutoPlatform = useCallback(
+    (tabUrl?: string) => {
+      const detected = detectPlatformFromUrl(tabUrl);
+      setPlatform(detected);
+      setSettings((prev) => {
+        const next = applyPlatformAutoToggle(prev, detected);
+        if (next !== prev) {
+          void persistSettings(next);
+        }
+        return next;
+      });
+    },
+    [persistSettings],
+  );
+
   useEffect(() => {
     if (!hasChromeRuntime || !chrome.runtime.onMessage) return;
 
     const listener = (message: ExtensionMessage) => {
+      if (message?.payload?.tabUrl) {
+        applyAutoPlatform(message.payload.tabUrl);
+      }
       if (message?.type === 'CONTEXT_ANALYZE_TEXT' && message.payload?.selectedText) {
         setTab('home');
         setViewMode('home');
@@ -238,7 +265,17 @@ export function SidePanelApp() {
 
     chrome.runtime.onMessage.addListener(listener);
     return () => chrome.runtime.onMessage.removeListener(listener);
-  }, []);
+  }, [applyAutoPlatform]);
+
+  useEffect(() => {
+    if (!hasChromeRuntime || !chrome.tabs?.query) return;
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs: Array<{ url?: string }>) => {
+      const url = tabs?.[0]?.url;
+      if (url) {
+        applyAutoPlatform(url);
+      }
+    });
+  }, [applyAutoPlatform]);
 
   useEffect(() => {
     (async () => {

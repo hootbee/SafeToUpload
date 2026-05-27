@@ -180,8 +180,9 @@ export interface SettingsState {
 }
 
 export interface ExtensionMessage {
-  type: 'INJECTED_BUTTON_CLICK' | 'CONTEXT_ANALYZE_TEXT';
+  type: 'INJECTED_BUTTON_CLICK' | 'CONTEXT_ANALYZE_TEXT' | 'PLATFORM_URL_CHANGED';
   payload?: {
     selectedText?: string;
+    tabUrl?: string;
   };
 }
