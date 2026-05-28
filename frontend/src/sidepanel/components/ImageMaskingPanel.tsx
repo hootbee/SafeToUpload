@@ -138,12 +138,28 @@ export function ImageMaskingPanel({
         <p style={{ color: '#dc2626', fontSize: '13px', margin: '0 0 12px 0' }}>{maskError}</p>
       )}
       <div className="row-gap">
-        <button className="btn" type="button" disabled={!canApply} onClick={onApplyMask}>
+        <label 
+          className="btn" 
+          role="button" 
+          onClick={canApply ? onApplyMask : undefined}
+          style={{ 
+            opacity: canApply ? 1 : 0.5, 
+            cursor: canApply ? 'pointer' : 'not-allowed' 
+          }}
+        >
           {isApplying ? '적용 중...' : '마스킹 적용'}
-        </button>
-        <button className="btn primary" type="button" disabled={!canDownload} onClick={onDownload}>
+        </label>
+        <label 
+          className="btn primary" 
+          role="button" 
+          onClick={canDownload ? onDownload : undefined}
+          style={{ 
+            opacity: canDownload ? 1 : 0.5, 
+            cursor: canDownload ? 'pointer' : 'not-allowed' 
+          }}
+        >
           다운로드
-        </button>
+        </label>
       </div>
     </section>
   );
