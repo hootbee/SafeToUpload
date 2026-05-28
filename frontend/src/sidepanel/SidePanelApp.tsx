@@ -62,6 +62,7 @@ import { RiskReport } from './components/RiskReport';
 import { SettingsPanel } from './components/SettingsPanel';
 import { TextInputCard } from './components/TextInputCard';
 import { TbArrowLeft } from 'react-icons/tb';
+import { RiRobot2Line } from "react-icons/ri";
 
 const hasChromeRuntime = typeof chrome !== 'undefined' && !!chrome.runtime;
 
@@ -900,7 +901,10 @@ export function SidePanelApp() {
                   />
                 ) : (
                   <section className="card model-banner">
-                    <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700 }}>서버 AI 모드 (Gemma4 26B)</h3>
+                    <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <RiRobot2Line size={18} />
+                      서버 AI 모드 (Gemma4 26B)
+                    </h3>
                     <p className="muted" style={{ marginBottom: 0 }}>
                       Nest API → Chat Completions ({settings.serverLlm.model}). URL·API 키는 설정 탭에서
                       변경할 수 있습니다.

@@ -1,4 +1,5 @@
 import type { InferenceMode } from '../../shared/types';
+import { FiToggleRight } from "react-icons/fi";
 
 interface Props {
   value: InferenceMode;
@@ -8,8 +9,11 @@ interface Props {
 export function InferenceModeSelector({ value, onChange }: Props) {
   return (
     <section className="card">
-      <h3 style={{ margin: '0 0 8px', fontSize: '15px', fontWeight: 700 }}>AI 추론 모드</h3>
-      <p className="muted" style={{ marginTop: 0, fontSize: '12px' }}>
+      <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <FiToggleRight size={18} />
+        AI 추론 모드
+      </h3>
+      <p className="muted" style={{ marginBottom: '10px', fontSize: '12px' }}>
         로컬: WebGPU + Gemma4 E4B · 서버: Gemma4 26B
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
