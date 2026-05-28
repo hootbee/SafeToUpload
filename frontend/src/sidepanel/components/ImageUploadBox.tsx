@@ -55,7 +55,7 @@ export function ImageUploadBox({ files, onFilesChange }: Props) {
       {files.length > 0 && (
         <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <p className="muted" style={{ margin: 0, fontSize: '12px' }}>
-            * 현재 선택됨 {files.length > 1 ? `(${files.length}개, 분석에는 첫 번째 이미지 사용)` : ''}
+            * 현재 선택됨 {files.length > 1 ? `(${files.length}개, 선택한 모든 이미지를 순차 분석)` : ''}
           </p>
           {files.map((file, index) => (
             <div
@@ -73,7 +73,7 @@ export function ImageUploadBox({ files, onFilesChange }: Props) {
               )}
               <div className="file-item" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
                 <span className="muted" style={{ fontSize: '12px', wordBreak: 'break-all' }}>
-                  {index === 0 ? `${file.name} (분석용)` : file.name}
+                  {files.length > 1 ? `${index + 1}. ${file.name}` : file.name}
                 </span>
                 <button
                   type="button"

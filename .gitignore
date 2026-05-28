@@ -31,7 +31,10 @@ coverage/
 .tmp/
 tmp/
 
-# Shared package build artifacts (keep source-only in shared/*)
+# Prevent compiled artifacts in shared TS source trees
 shared/**/*.js
-shared/**/*.d.ts
 shared/**/*.js.map
+shared/**/*.d.ts
+server/src/_shared/**/*.js
+server/src/_shared/**/*.js.map
+server/src/_shared/**/*.d.ts

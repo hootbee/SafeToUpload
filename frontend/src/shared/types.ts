@@ -130,6 +130,8 @@ export interface RiskReportData {
   imageRiskSummary: string;
   /** 업로드 이미지 미리보기 (blob URL) */
   imagePreviewUrl?: string;
+  /** 여러 장 업로드 시 전체 미리보기 (blob URL 목록) */
+  imagePreviewUrls?: string[];
   /** 마스킹 적용 후 미리보기 (blob URL) */
   maskedImagePreviewUrl?: string;
   /** imageRisks 항목 기반 마스킹 영역 */
@@ -160,6 +162,14 @@ export interface RiskReportData {
   rewrittenText: string;
   /** 모델 원본 응답(raw content/json) 디버그 뷰 */
   rewriteRawResponse?: string;
+  /** 다중 이미지 분석 시 이미지별 마스킹 데이터 */
+  imageEntries?: Array<{
+    imageName?: string;
+    imagePreviewUrl?: string;
+    maskedImagePreviewUrl?: string;
+    imageRiskSummary: string;
+    maskRegions: MaskRegion[];
+  }>;
 }
 
 export interface ServerLlmSettings {
