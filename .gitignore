@@ -30,3 +30,11 @@ server/.nestjs-cli.json
 coverage/
 .tmp/
 tmp/
+
+# Prevent compiled artifacts in shared TS source trees
+shared/**/*.js
+shared/**/*.js.map
+shared/**/*.d.ts
+server/src/_shared/**/*.js
+server/src/_shared/**/*.js.map
+server/src/_shared/**/*.d.ts
