@@ -12,23 +12,8 @@ function asStringArray(value: unknown): string[] {
 export class PrismaPrivacyMemoryRepository implements PrivacyMemoryRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  private get privacyMemoryDelegate():
-    | {
-        findMany: (...args: any[]) => Promise<any[]>;
-        update: (...args: any[]) => Promise<any>;
-        create: (...args: any[]) => Promise<any>;
-        deleteMany: (...args: any[]) => Promise<{ count: number }>;
-      }
-    | null {
-    const delegate = (this.prisma as any).privacyMemoryProfile;
-    return delegate ?? null;
-  }
-
   async findActiveProfiles(userId: string): Promise<PrivacyMemoryProfileRecord[]> {
-    const delegate = this.privacyMemoryDelegate;
-    if (!delegate) return [];
-
-    const rows = await delegate.findMany({
+    const rows = await this.prisma.privacyMemoryProfile.findMany({
       where: { userId, isActive: true },
       orderBy: { lastSeenAt: 'desc' },
       take: 200,
@@ -83,9 +68,7 @@ export class PrismaPrivacyMemoryRepository implements PrivacyMemoryRepository {
     expiresAt.setDate(expiresAt.getDate() + meta.retentionDays);
 
     if (existing) {
-      const delegate = this.privacyMemoryDelegate;
-      if (!delegate) return;
-      await delegate.update({
+      await this.prisma.privacyMemoryProfile.update({
         where: { id: existing.id },
         data: {
           seenCount: existing.seenCount + 1,
@@ -100,9 +83,7 @@ export class PrismaPrivacyMemoryRepository implements PrivacyMemoryRepository {
       return;
     }
 
-    const delegate = this.privacyMemoryDelegate;
-    if (!delegate) return;
-    await delegate.create({
+    await this.prisma.privacyMemoryProfile.create({
       data: {
         userId,
         piiTypes: candidate.piiTypes,
@@ -120,16 +101,12 @@ export class PrismaPrivacyMemoryRepository implements PrivacyMemoryRepository {
   }
 
   async deleteAll(userId: string): Promise<number> {
-    const delegate = this.privacyMemoryDelegate;
-    if (!delegate) return 0;
-    const result = await delegate.deleteMany({ where: { userId } });
+    const result = await this.prisma.privacyMemoryProfile.deleteMany({ where: { userId } });
     return result.count;
   }
 
   async deleteExpired(userId: string): Promise<number> {
-    const delegate = this.privacyMemoryDelegate;
-    if (!delegate) return 0;
-    const result = await delegate.deleteMany({
+    const result = await this.prisma.privacyMemoryProfile.deleteMany({
       where: {
         userId,
         expiresAt: { lt: new Date() },
