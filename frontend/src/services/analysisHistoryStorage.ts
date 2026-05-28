@@ -19,7 +19,7 @@ export interface StoredAnalysisEntry {
 interface StoragePayload {
   entries: StoredAnalysisEntry[];
 }
-
+ 
 function stripReportForStorage(report: RiskReportData): StoredRiskReport {
   const { imagePreviewUrl: _p, maskedImagePreviewUrl: _m, ...rest } = report;
   return rest;

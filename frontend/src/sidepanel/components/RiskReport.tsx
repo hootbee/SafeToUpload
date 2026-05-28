@@ -156,7 +156,7 @@ export function RiskReport({
           </h3>
           <p className="muted" style={{ fontSize: '14px', margin: 0, lineHeight: 1.5 }}>
             {report.exifSummary}
-          </p>
+          </p> 
         </section>
 
         <section className="card">

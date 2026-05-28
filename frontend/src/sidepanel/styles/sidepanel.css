@@ -631,8 +631,14 @@ h2 {
 
 .panel-scroll-fill::-webkit-scrollbar-thumb:hover,
 .history-scroll-area::-webkit-scrollbar-thumb:hover,
+<<<<<<< Updated upstream
 .report-scroll-area::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+=======
+.report-scroll-area::-webkit-scrollbar-thumb:hover,
+.log-box::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8; 
+>>>>>>> Stashed changes
 }
 
 /* 슬라이더 디자인 */

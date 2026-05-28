@@ -522,9 +522,142 @@ export function SidePanelApp() {
     });
     activeAnalysisIdRef.current = created.id;
 
+<<<<<<< Updated upstream
     if (analysisAbortedRef.current) {
       await api.cancelAnalysis(created.id).catch(() => undefined);
       return;
+=======
+      updateStage(
+        'PII 탐지',
+        'running',
+        total > 1
+          ? `${presentation.requestCreate} (${idx + 1}/${total})`
+          : presentation.requestCreate,
+        progressBase,
+      );
+
+      const created = await api.createAnalysis({
+        sourceType: 'manual',
+        platform: input.platform, 
+        inferenceMode: settings.inferenceMode,
+        inputText: input.text,
+        imagePath: currentName,
+      });
+      activeAnalysisIdRef.current = created.id;
+
+      if (analysisAbortedRef.current) {
+        await api.cancelAnalysis(created.id).catch(() => undefined);
+        return;
+      }
+
+      updateStage('PII 탐지', 'done', presentation.requestDone);
+
+      if (currentFile) {
+        updateStage(
+          '이미지 분석',
+          'running',
+          total > 1
+            ? `${presentation.imageUpload(currentName)} (${idx + 1}/${total})`
+            : presentation.imageUpload(currentName),
+          progressBase + 8,
+        );
+        await api.uploadAnalysisImage(created.id, currentFile);
+        updateStage('이미지 분석', 'done', presentation.imageUploadDone);
+      }
+
+      updateStage(
+        '컨텍스트 분석',
+        'running',
+        total > 1 ? `${presentation.inference} (${idx + 1}/${total})` : presentation.inference,
+        progressMid,
+      );
+      await api.runAnalysis(created.id, {
+        chatUrl: settings.serverLlm.chatUrl,
+        apiKey: settings.serverLlm.apiKey || undefined,
+        model: settings.serverLlm.model,
+      });
+
+      if (analysisAbortedRef.current) {
+        await api.cancelAnalysis(created.id).catch(() => undefined);
+        return;
+      }
+
+      updateStage('컨텍스트 분석', 'done', presentation.inferenceDone);
+      updateStage(
+        '이미지 분석',
+        'running',
+        total > 1 ? `${presentation.fetchResult} (${idx + 1}/${total})` : presentation.fetchResult,
+        progressMid + 8,
+      );
+      const record = await api.getAnalysis(created.id);
+      updateStage(
+        '리라이트 제안',
+        'running',
+        total > 1 ? `${presentation.rewrite} (${idx + 1}/${total})` : presentation.rewrite,
+        progressMid + 12,
+      );
+
+      const serverExifItems = sanitizeExifItems(record.result?.exifItems);
+      if (currentFile && serverExifItems.length === 0) {
+        try {
+          const extractedExifItems = await extractExifItemsFromFile(currentFile);
+          if (extractedExifItems.length > 0) {
+            record.result = {
+              ...(record.result ?? {}),
+              exifItems: extractedExifItems,
+            };
+          }
+        } catch (error) {
+          console.warn('[SafeToUpload] EXIF 추출 실패, 서버 응답 유지', error);
+        }
+      }
+
+      const recordAiRisks = (record.result?.imageRisks as Array<Record<string, unknown>>) ?? [];
+      const aiForDetect: AiAnalysisResponse = {
+        riskScore: record.riskScore ?? 0,
+        riskLevel: 'medium',
+        categoryScores: { pii: 0, exif: 0, image: 0, context: 0 },
+        scoreBreakdown: {
+          piiWeighted: 0,
+          exifWeighted: 0,
+          imageWeighted: 0,
+          contextWeighted: 0,
+          formula: '',
+        },
+        riskReasons: { pii: [], exif: [], image: [], context: [] },
+        escalationRules: [],
+        piiItems: [],
+        exifItems: [],
+        imageRisks: recordAiRisks,
+        contextResult: { summary: record.summary ?? '' },
+        rewriteSuggestion: '',
+        rawAiResponse: { mode: presentation.rawMode },
+      };
+
+      let detections: RiskDetectionHit[] = [];
+      if (currentFile) {
+        updateStage(
+          '이미지 분석',
+          'running',
+          total > 1
+            ? `마스킹 영역 자동 탐지(OwlViT) 시작... (${idx + 1}/${total})`
+            : '마스킹 영역 자동 탐지(OwlViT) 시작...',
+          progressMid + 16,
+        );
+        detections = await resolveRiskDetections(currentFile, aiForDetect, {
+          imageName: currentName,
+          text: input.text,
+        });
+      }
+
+      const mapped = mapRecordToReport(record, input.platform, currentName, detections);
+      reports.push({
+        report: mapped,
+        summary: record.summary ?? mapped.contextSummary,
+        file: currentFile,
+        id: created.id,
+      });
+>>>>>>> Stashed changes
     }
 
     updateStage('PII 탐지', 'done', presentation.requestDone);

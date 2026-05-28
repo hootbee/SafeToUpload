@@ -10,7 +10,7 @@ interface Props {
 export function ImageUploadBox({ files, onFilesChange }: Props) {
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
 
-  useEffect(() => {
+  useEffect(() => { 
     const urls = files.map((file) => URL.createObjectURL(file));
     const timer = setTimeout(() => {
       setPreviewUrls(urls);

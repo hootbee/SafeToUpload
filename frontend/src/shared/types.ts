@@ -188,3 +188,4 @@ export interface ExtensionMessage {
     tabUrl?: string;
   };
 }
+ 
