@@ -175,7 +175,7 @@ export function RiskReport({
                       height={140}
                     />
                     <p className="muted" style={{ fontSize: '12px', margin: 0 }}>
-                      {idx + 1}. {entry.imageName ?? `이미지 ${idx + 1}`} · 마스킹 후보: {labels}
+                      {idx + 1}. {entry.imageName ?? `이미지 ${idx + 1}`} <br />· 마스킹 후보: {labels}
                     </p>
                   </div>
                 );
@@ -186,7 +186,7 @@ export function RiskReport({
               <ImagePreviewBox src={report.imagePreviewUrl} height={140} />
             </div>
           ) : null}
-          <p className="muted" style={{ fontSize: '14px', margin: 0, marginBottom: isHistoryView ? 0 : '5px', lineHeight: 1.5 }}>
+          <p className="muted" style={{ fontSize: '14px', margin: 0, marginBottom: isHistoryView ? 0 : '5px', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
             {report.imageRiskSummary}
           </p>
           {!isHistoryView && (

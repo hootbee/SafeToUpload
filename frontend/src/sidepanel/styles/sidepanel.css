@@ -612,26 +612,30 @@ h2 {
 /* 스크롤바 디자인 */
 .panel-scroll-fill::-webkit-scrollbar,
 .history-scroll-area::-webkit-scrollbar,
-.report-scroll-area::-webkit-scrollbar {
+.report-scroll-area::-webkit-scrollbar,
+.log-box::-webkit-scrollbar {
   width: 6px;
 }
 
 .panel-scroll-fill::-webkit-scrollbar-track,
 .history-scroll-area::-webkit-scrollbar-track,
-.report-scroll-area::-webkit-scrollbar-track {
+.report-scroll-area::-webkit-scrollbar-track,
+.log-box::-webkit-scrollbar-track {
   background: transparent;
 }
 
 .panel-scroll-fill::-webkit-scrollbar-thumb,
 .history-scroll-area::-webkit-scrollbar-thumb,
-.report-scroll-area::-webkit-scrollbar-thumb {
+.report-scroll-area::-webkit-scrollbar-thumb,
+.log-box::-webkit-scrollbar-thumb {
   background: #cbd5e1;
   border-radius: 10px;
 }
 
 .panel-scroll-fill::-webkit-scrollbar-thumb:hover,
 .history-scroll-area::-webkit-scrollbar-thumb:hover,
-.report-scroll-area::-webkit-scrollbar-thumb:hover {
+.report-scroll-area::-webkit-scrollbar-thumb:hover,
+.log-box::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
 
