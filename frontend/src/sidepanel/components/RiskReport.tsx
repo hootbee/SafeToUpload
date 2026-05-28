@@ -163,11 +163,29 @@ export function RiskReport({
           <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '16px', margin: '0 0 12px 0' }}>
             <IoImageOutline size={18} /> 이미지에서 보이는 위험
           </h3>
-          {!isHistoryView && (
+          {!isHistoryView && (report.imageEntries?.length ?? 0) > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '12px' }}>
+              {report.imageEntries?.map((entry, idx) => {
+                const labels = entry.maskRegions.map((m) => m.label).join(', ') || '없음';
+                return (
+                  <div key={`entry-${idx}`} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <ImagePreviewBox
+                      src={entry.imagePreviewUrl}
+                      alt={entry.imageName ?? `업로드 이미지 ${idx + 1}`}
+                      height={140}
+                    />
+                    <p className="muted" style={{ fontSize: '12px', margin: 0 }}>
+                      {idx + 1}. {entry.imageName ?? `이미지 ${idx + 1}`} · 마스킹 후보: {labels}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          ) : !isHistoryView ? (
             <div style={{ marginBottom: '12px' }}>
               <ImagePreviewBox src={report.imagePreviewUrl} height={140} />
             </div>
-          )}
+          ) : null}
           <p className="muted" style={{ fontSize: '14px', margin: 0, marginBottom: isHistoryView ? 0 : '5px', lineHeight: 1.5 }}>
             {report.imageRiskSummary}
           </p>
@@ -208,16 +226,16 @@ export function RiskReport({
             <div style={{ marginTop: '12px' }}>
               <p className="muted" style={{ fontSize: '12px', margin: '0 0 8px 0' }}>이번에 찾은 개인정보 종류</p>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-              {report.memoryPattern.frequencies.map((f) => (
-                <span 
-                  key={f.label} 
-                  style={{ display: 'inline-flex', alignItems: 'center', fontSize: '12px', fontWeight: 600, color: '#475569', backgroundColor: '#f1f5f9', padding: '4px 10px', borderRadius: '9999px', cursor: 'default', userSelect: 'none' }}
-                >
-                  {f.label} ({f.value})
-                </span>
-              ))}
+                {report.memoryPattern.frequencies.map((f) => (
+                  <span 
+                    key={f.label} 
+                    style={{ display: 'inline-flex', alignItems: 'center', fontSize: '12px', fontWeight: 600, color: '#475569', backgroundColor: '#f1f5f9', padding: '4px 10px', borderRadius: '9999px', cursor: 'default', userSelect: 'none' }}
+                  >
+                    {f.label} ({f.value})
+                  </span>
+                ))}
+              </div>
             </div>
-          </div>
           )}
         </section>
       </div>

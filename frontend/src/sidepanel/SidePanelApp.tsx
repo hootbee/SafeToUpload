@@ -35,6 +35,7 @@ import type {
   HistoryItem,
   InferenceMode,
   Platform,
+  RiskLevel,
   RiskReportData,
   SettingsState,
   TabKey,
@@ -126,6 +127,12 @@ function getAnalysisPresentation(mode: InferenceMode) {
   };
 }
 
+const RISK_LEVEL_ORDER: RiskLevel[] = ['low', 'medium', 'high', 'critical'];
+
+function maxRiskLevel(a: RiskLevel, b: RiskLevel): RiskLevel {
+  return RISK_LEVEL_ORDER[Math.max(RISK_LEVEL_ORDER.indexOf(a), RISK_LEVEL_ORDER.indexOf(b))] ?? b;
+}
+
 export function SidePanelApp() {
   const [tab, setTab] = useState<TabKey>('home');
   const [viewMode, setViewMode] = useState<ViewMode>('home');
@@ -161,13 +168,18 @@ export function SidePanelApp() {
   const activeAnalysisIdRef = useRef<string | null>(null);
   const analysisImageFileRef = useRef<File | null>(null);
   const imagePreviewUrlRef = useRef<string | null>(null);
+  const imagePreviewUrlsRef = useRef<string[]>([]);
   const maskedImagePreviewUrlRef = useRef<string | null>(null);
 
   const revokeImagePreviewUrl = useCallback(() => {
+    const all = new Set<string>();
     if (imagePreviewUrlRef.current) {
-      URL.revokeObjectURL(imagePreviewUrlRef.current);
-      imagePreviewUrlRef.current = null;
+      all.add(imagePreviewUrlRef.current);
     }
+    imagePreviewUrlsRef.current.forEach((url) => all.add(url));
+    all.forEach((url) => URL.revokeObjectURL(url));
+    imagePreviewUrlRef.current = null;
+    imagePreviewUrlsRef.current = [];
   }, []);
 
   const revokeMaskedPreviewUrl = useCallback(() => {
@@ -178,15 +190,32 @@ export function SidePanelApp() {
   }, []);
 
   const attachImagePreview = useCallback(
-    (result: RiskReportData, imageFile?: File): RiskReportData => {
+    (result: RiskReportData, imageFile?: File, imageFiles: File[] = []): RiskReportData => {
       revokeImagePreviewUrl();
       revokeMaskedPreviewUrl();
-      if (!imageFile) {
-        return { ...result, imagePreviewUrl: undefined, maskedImagePreviewUrl: undefined };
+      const targets = imageFiles.length > 0 ? imageFiles : imageFile ? [imageFile] : [];
+      if (targets.length === 0) {
+        return {
+          ...result,
+          imagePreviewUrl: undefined,
+          imagePreviewUrls: undefined,
+          maskedImagePreviewUrl: undefined,
+        };
       }
-      const url = URL.createObjectURL(imageFile);
-      imagePreviewUrlRef.current = url;
-      return { ...result, imagePreviewUrl: url, maskedImagePreviewUrl: undefined };
+      const urls = targets.map((file) => URL.createObjectURL(file));
+      imagePreviewUrlRef.current = urls[0] ?? null;
+      imagePreviewUrlsRef.current = urls;
+      return {
+        ...result,
+        imagePreviewUrl: urls[0],
+        imagePreviewUrls: urls,
+        imageEntries: (result.imageEntries ?? []).map((entry, index) => ({
+          ...entry,
+          imagePreviewUrl: urls[index],
+          maskedImagePreviewUrl: undefined,
+        })),
+        maskedImagePreviewUrl: undefined,
+      };
     },
     [revokeImagePreviewUrl, revokeMaskedPreviewUrl],
   );
@@ -400,28 +429,18 @@ export function SidePanelApp() {
     }
   };
 
-  const commitMaskedPreview = useCallback(
-    async (file: File, regions: RiskReportData['maskRegions']) => {
-      const blob = await applyMasksToFile(file, regions);
-      revokeMaskedPreviewUrl();
-      const url = URL.createObjectURL(blob);
-      maskedImagePreviewUrlRef.current = url;
-      setReport((prev) => (prev ? { ...prev, maskedImagePreviewUrl: url } : prev));
-    },
-    [revokeMaskedPreviewUrl],
-  );
-
   const finishReport = (
     result: RiskReportData,
     summary: string,
     imageFile?: File,
     recordId?: string,
+    imageFiles: File[] = [],
   ) => {
     const file = imageFile ?? files[0] ?? null;
     const id = recordId ?? `local-${Date.now()}`;
     analysisImageFileRef.current = file;
     setMaskError('');
-    const withPreview = attachImagePreview(result, file ?? undefined);
+    const withPreview = attachImagePreview(result, file ?? undefined, imageFiles);
     setReport(withPreview);
 
     void saveAnalysisEntry({
@@ -503,97 +522,200 @@ export function SidePanelApp() {
 
   const runServerAnalysisFlow = async (input: AnalysisInput) => {
     const presentation = getAnalysisPresentation(settings.inferenceMode);
+    const targetFiles = input.imageFile ? [input.imageFile, ...files.slice(1)] : [];
+    const total = Math.max(1, targetFiles.length);
+    const reports: Array<{ report: RiskReportData; summary: string; file?: File; id: string }> = [];
 
-    updateStage('PII 탐지', 'running', presentation.requestCreate, 10);
-    const created = await api.createAnalysis({
-      sourceType: 'manual',
-      platform: input.platform,
-      inferenceMode: settings.inferenceMode,
-      inputText: input.text,
-      imagePath: input.imageName,
-    });
-    activeAnalysisIdRef.current = created.id;
+    for (let idx = 0; idx < total; idx += 1) {
+      const currentFile = targetFiles[idx];
+      const currentName = currentFile?.name;
+      const progressBase = 10 + Math.floor((idx / total) * 50);
+      const progressMid = 28 + Math.floor((idx / total) * 38);
 
-    if (analysisAbortedRef.current) {
-      await api.cancelAnalysis(created.id).catch(() => undefined);
-      return;
-    }
+      updateStage(
+        'PII 탐지',
+        'running',
+        total > 1
+          ? `${presentation.requestCreate} (${idx + 1}/${total})`
+          : presentation.requestCreate,
+        progressBase,
+      );
 
-    updateStage('PII 탐지', 'done', presentation.requestDone);
+      const created = await api.createAnalysis({
+        sourceType: 'manual',
+        platform: input.platform,
+        inferenceMode: settings.inferenceMode,
+        inputText: input.text,
+        imagePath: currentName,
+      });
+      activeAnalysisIdRef.current = created.id;
 
-    if (input.imageFile) {
-      updateStage('이미지 분석', 'running', presentation.imageUpload(input.imageName), 22);
-      await api.uploadAnalysisImage(created.id, input.imageFile);
-      updateStage('이미지 분석', 'done', presentation.imageUploadDone);
-    }
-
-    updateStage('컨텍스트 분석', 'running', presentation.inference, 35);
-    await api.runAnalysis(created.id, {
-      chatUrl: settings.serverLlm.chatUrl,
-      apiKey: settings.serverLlm.apiKey || undefined,
-      model: settings.serverLlm.model,
-    });
-
-    if (analysisAbortedRef.current) {
-      await api.cancelAnalysis(created.id).catch(() => undefined);
-      return;
-    }
-
-    updateStage('컨텍스트 분석', 'done', presentation.inferenceDone);
-    updateStage('이미지 분석', 'running', presentation.fetchResult, 55);
-    const record = await api.getAnalysis(created.id);
-    updateStage('리라이트 제안', 'running', presentation.rewrite, 60);
-    const serverExifItems = sanitizeExifItems(record.result?.exifItems);
-    if (input.imageFile && serverExifItems.length === 0) {
-      try {
-        const extractedExifItems = await extractExifItemsFromFile(input.imageFile);
-        if (extractedExifItems.length > 0) {
-          record.result = {
-            ...(record.result ?? {}),
-            exifItems: extractedExifItems,
-          };
-        }
-      } catch (error) {
-        console.warn('[SafeToUpload] EXIF 추출 실패, 서버 응답 유지', error);
+      if (analysisAbortedRef.current) {
+        await api.cancelAnalysis(created.id).catch(() => undefined);
+        return;
       }
-    }
 
-    const recordAiRisks = (record.result?.imageRisks as Array<Record<string, unknown>>) ?? [];
-    const aiForDetect: AiAnalysisResponse = {
-      riskScore: record.riskScore ?? 0,
-      riskLevel: 'medium',
-      categoryScores: { pii: 0, exif: 0, image: 0, context: 0 },
-      scoreBreakdown: {
-        piiWeighted: 0,
-        exifWeighted: 0,
-        imageWeighted: 0,
-        contextWeighted: 0,
-        formula: '',
-      },
-      riskReasons: { pii: [], exif: [], image: [], context: [] },
-      escalationRules: [],
-      piiItems: [],
-      exifItems: [],
-      imageRisks: recordAiRisks,
-      contextResult: { summary: record.summary ?? '' },
-      rewriteSuggestion: '',
-      rawAiResponse: { mode: presentation.rawMode },
-    };
+      updateStage('PII 탐지', 'done', presentation.requestDone);
 
-    let detections: RiskDetectionHit[] = [];
-    if (input.imageFile) {
-      updateStage('이미지 분석', 'running', '마스킹 영역 자동 탐지(OwlViT) 시작...', 68);
-      detections = await resolveRiskDetections(input.imageFile, aiForDetect, {
-        imageName: input.imageName,
-        text: input.text,
+      if (currentFile) {
+        updateStage(
+          '이미지 분석',
+          'running',
+          total > 1
+            ? `${presentation.imageUpload(currentName)} (${idx + 1}/${total})`
+            : presentation.imageUpload(currentName),
+          progressBase + 8,
+        );
+        await api.uploadAnalysisImage(created.id, currentFile);
+        updateStage('이미지 분석', 'done', presentation.imageUploadDone);
+      }
+
+      updateStage(
+        '컨텍스트 분석',
+        'running',
+        total > 1 ? `${presentation.inference} (${idx + 1}/${total})` : presentation.inference,
+        progressMid,
+      );
+      await api.runAnalysis(created.id, {
+        chatUrl: settings.serverLlm.chatUrl,
+        apiKey: settings.serverLlm.apiKey || undefined,
+        model: settings.serverLlm.model,
+      });
+
+      if (analysisAbortedRef.current) {
+        await api.cancelAnalysis(created.id).catch(() => undefined);
+        return;
+      }
+
+      updateStage('컨텍스트 분석', 'done', presentation.inferenceDone);
+      updateStage(
+        '이미지 분석',
+        'running',
+        total > 1 ? `${presentation.fetchResult} (${idx + 1}/${total})` : presentation.fetchResult,
+        progressMid + 8,
+      );
+      const record = await api.getAnalysis(created.id);
+      updateStage(
+        '리라이트 제안',
+        'running',
+        total > 1 ? `${presentation.rewrite} (${idx + 1}/${total})` : presentation.rewrite,
+        progressMid + 12,
+      );
+
+      const serverExifItems = sanitizeExifItems(record.result?.exifItems);
+      if (currentFile && serverExifItems.length === 0) {
+        try {
+          const extractedExifItems = await extractExifItemsFromFile(currentFile);
+          if (extractedExifItems.length > 0) {
+            record.result = {
+              ...(record.result ?? {}),
+              exifItems: extractedExifItems,
+            };
+          }
+        } catch (error) {
+          console.warn('[SafeToUpload] EXIF 추출 실패, 서버 응답 유지', error);
+        }
+      }
+
+      const recordAiRisks = (record.result?.imageRisks as Array<Record<string, unknown>>) ?? [];
+      const aiForDetect: AiAnalysisResponse = {
+        riskScore: record.riskScore ?? 0,
+        riskLevel: 'medium',
+        categoryScores: { pii: 0, exif: 0, image: 0, context: 0 },
+        scoreBreakdown: {
+          piiWeighted: 0,
+          exifWeighted: 0,
+          imageWeighted: 0,
+          contextWeighted: 0,
+          formula: '',
+        },
+        riskReasons: { pii: [], exif: [], image: [], context: [] },
+        escalationRules: [],
+        piiItems: [],
+        exifItems: [],
+        imageRisks: recordAiRisks,
+        contextResult: { summary: record.summary ?? '' },
+        rewriteSuggestion: '',
+        rawAiResponse: { mode: presentation.rawMode },
+      };
+
+      let detections: RiskDetectionHit[] = [];
+      if (currentFile) {
+        updateStage(
+          '이미지 분석',
+          'running',
+          total > 1
+            ? `마스킹 영역 자동 탐지(OwlViT) 시작... (${idx + 1}/${total})`
+            : '마스킹 영역 자동 탐지(OwlViT) 시작...',
+          progressMid + 16,
+        );
+        detections = await resolveRiskDetections(currentFile, aiForDetect, {
+          imageName: currentName,
+          text: input.text,
+        });
+      }
+
+      const mapped = mapRecordToReport(record, input.platform, currentName, detections);
+      reports.push({
+        report: mapped,
+        summary: record.summary ?? mapped.contextSummary,
+        file: currentFile,
+        id: created.id,
       });
     }
+
+    if (reports.length === 0) return;
+
+    const primary = reports.reduce((best, current) => {
+      if (current.report.score > best.report.score) return current;
+      if (current.report.score < best.report.score) return best;
+      const nextLevel = maxRiskLevel(best.report.riskLevel, current.report.riskLevel);
+      return nextLevel === current.report.riskLevel ? current : best;
+    }, reports[0]);
+
+    const hasMultiImage = reports.length > 1;
+    const mergedExif = hasMultiImage
+      ? Array.from(
+          new Set(
+            reports
+              .map((r) => r.report.exifSummary)
+              .filter((v) => v && v !== '이미지 메타데이터 위험 없음'),
+          ),
+        ).join(', ')
+      : primary.report.exifSummary;
+
+    const mergedSummary = hasMultiImage
+      ? `${primary.summary} (총 ${reports.length}장 이미지 중 최고 위험 기준)`
+      : primary.summary;
+
+    const mergedImageRiskSummary = hasMultiImage
+      ? `총 ${reports.length}장 분석 기준: ${primary.report.imageRiskSummary}`
+      : primary.report.imageRiskSummary;
+
+    const mergedEscalations = Array.from(
+      new Set(reports.flatMap((r) => r.report.escalationRules)),
+    );
 
     analysisStageOrderRef.current.forEach((title) => updateStage(title, 'done', `${title} 완료`));
     setAnalysisProgress(100);
 
-    const result = mapRecordToReport(record, input.platform, input.imageName, detections);
-    finishReport(result, record.summary ?? result.contextSummary, input.imageFile, created.id);
+    finishReport(
+      {
+        ...primary.report,
+        exifSummary: mergedExif || '이미지 메타데이터 위험 없음',
+        imageRiskSummary: mergedImageRiskSummary,
+        escalationRules: mergedEscalations,
+        imageEntries: reports.map((item) => ({
+          imageName: item.file?.name,
+          imageRiskSummary: item.report.imageRiskSummary,
+          maskRegions: item.report.maskRegions.map((region) => ({ ...region })),
+        })),
+      },
+      mergedSummary,
+      primary.file,
+      primary.id,
+      targetFiles,
+    );
   };
 
   const runAnalysis = async () => {
@@ -663,10 +785,23 @@ export function SidePanelApp() {
     setShowDeleteDialog(false);
   };
 
-  const toggleMask = (id: string) => {
+  const toggleMask = (imageIndex: number, id: string) => {
     setMaskError('');
     setReport((prev) => {
       if (!prev) return prev;
+      if (prev.imageEntries && prev.imageEntries.length > 0) {
+        return {
+          ...prev,
+          imageEntries: prev.imageEntries.map((entry, idx) =>
+            idx !== imageIndex
+              ? entry
+              : {
+                  ...entry,
+                  maskRegions: entry.maskRegions.map((m) => (m.id === id ? { ...m, checked: !m.checked } : m)),
+                },
+          ),
+        };
+      }
       return {
         ...prev,
         maskRegions: prev.maskRegions.map((m) => (m.id === id ? { ...m, checked: !m.checked } : m)),
@@ -675,14 +810,29 @@ export function SidePanelApp() {
   };
 
   const applyImageMask = async () => {
-    const file = analysisImageFileRef.current ?? files[0] ?? null;
-    if (!report || !file) {
+    if (!report) {
       setMaskError('마스킹할 원본 이미지가 없습니다. 이미지를 첨부한 뒤 다시 분석해 주세요.');
       return;
     }
-    analysisImageFileRef.current = file;
-    const selected = report.maskRegions.filter((r) => r.checked);
-    if (selected.length === 0) {
+    const targetFiles = files.length > 0 ? files : analysisImageFileRef.current ? [analysisImageFileRef.current] : [];
+    if (targetFiles.length === 0) {
+      setMaskError('마스킹할 원본 이미지가 없습니다. 이미지를 첨부한 뒤 다시 분석해 주세요.');
+      return;
+    }
+    const entries =
+      report.imageEntries && report.imageEntries.length > 0
+        ? report.imageEntries
+        : [
+            {
+              imageName: targetFiles[0]?.name,
+              imagePreviewUrl: report.imagePreviewUrl,
+              maskedImagePreviewUrl: report.maskedImagePreviewUrl,
+              imageRiskSummary: report.imageRiskSummary,
+              maskRegions: report.maskRegions,
+            },
+          ];
+
+    if (!entries.some((entry) => entry.maskRegions.some((r) => r.checked))) {
       setMaskError('마스킹할 항목을 하나 이상 선택하세요.');
       return;
     }
@@ -690,7 +840,32 @@ export function SidePanelApp() {
     setIsMaskApplying(true);
     setMaskError('');
     try {
-      await commitMaskedPreview(file, report.maskRegions);
+      const nextEntries: NonNullable<RiskReportData['imageEntries']> = [];
+      for (let index = 0; index < entries.length; index += 1) {
+        const entry = entries[index];
+        const file = targetFiles[index];
+        if (!file) {
+          nextEntries.push(entry);
+          continue;
+        }
+        const blob = await applyMasksToFile(file, entry.maskRegions);
+        const url = URL.createObjectURL(blob);
+        nextEntries.push({
+          ...entry,
+          maskedImagePreviewUrl: url,
+        });
+      }
+      revokeMaskedPreviewUrl();
+      maskedImagePreviewUrlRef.current = nextEntries[0]?.maskedImagePreviewUrl ?? null;
+      setReport((prev) =>
+        prev
+          ? {
+              ...prev,
+              maskedImagePreviewUrl: nextEntries[0]?.maskedImagePreviewUrl,
+              imageEntries: nextEntries,
+            }
+          : prev,
+      );
       setMaskPreviewApplied(true);
     } catch (error) {
       setMaskError((error as Error).message);
@@ -700,7 +875,25 @@ export function SidePanelApp() {
   };
 
   const downloadMaskedImage = () => {
-    const url = report?.maskedImagePreviewUrl;
+    const entries = report?.imageEntries ?? [];
+    if (entries.length > 1) {
+      const downloadable = entries
+        .map((entry, index) => ({ url: entry.maskedImagePreviewUrl, index }))
+        .filter((item): item is { url: string; index: number } => Boolean(item.url));
+      if (downloadable.length === 0) {
+        setMaskError('먼저 「마스킹 적용」을 실행하세요.');
+        return;
+      }
+      downloadable.forEach((item) => {
+        const anchor = document.createElement('a');
+        anchor.href = item.url;
+        anchor.download = suggestedMaskedFileName(files[item.index]?.name ?? `image-${item.index + 1}.png`);
+        anchor.click();
+      });
+      return;
+    }
+
+    const url = report?.maskedImagePreviewUrl ?? entries[0]?.maskedImagePreviewUrl;
     if (!url) {
       setMaskError('먼저 「마스킹 적용」을 실행하세요.');
       return;

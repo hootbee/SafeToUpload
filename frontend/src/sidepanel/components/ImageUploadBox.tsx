@@ -48,7 +48,7 @@ export function ImageUploadBox({ files, onFilesChange }: Props) {
       {files.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px', background: '#f8fafc', padding: '16px', borderRadius: '12px' }}>
           <p className="muted" style={{ margin: 0, fontSize: '12px' }}>
-            * 현재 선택됨 {files.length > 1 ? `(${files.length}개)` : ''}
+            * 현재 선택됨 {files.length > 1 ? `(${files.length}개, 선택한 모든 이미지를 순차 분석)` : ''}
           </p>
           
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -95,6 +95,7 @@ export function ImageUploadBox({ files, onFilesChange }: Props) {
         />
         <span>{files.length > 0 ? '파일 추가하기' : '이미지 파일 선택'}</span>
       </label>
+
     </section>
   );
 }

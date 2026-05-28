@@ -10,7 +10,7 @@ interface Props {
   isApplying: boolean;
   maskError: string;
   isRetryingBbox: boolean;
-  onToggleMask: (id: string) => void;
+  onToggleMask: (imageIndex: number, id: string) => void;
   onApplyMask: () => void;
   onDownload: () => void;
   onRetryBbox: () => void;
@@ -28,38 +28,89 @@ export function ImageMaskingPanel({
   onDownload,
   onRetryBbox,
 }: Readonly<Props>) {
-  const previewUrl =
-    showMaskedPreview && report.maskedImagePreviewUrl
-      ? report.maskedImagePreviewUrl
-      : report.imagePreviewUrl;
-  const canApply = hasSourceImage && report.maskRegions.some((r) => r.checked) && !isApplying;
-  const canDownload = showMaskedPreview && Boolean(report.maskedImagePreviewUrl);
+  const imageEntries =
+    report.imageEntries && report.imageEntries.length > 0
+      ? report.imageEntries
+      : [
+          {
+            imagePreviewUrl: report.imagePreviewUrl,
+            maskedImagePreviewUrl: report.maskedImagePreviewUrl,
+            imageRiskSummary: report.imageRiskSummary,
+            maskRegions: report.maskRegions,
+          },
+        ];
+  const canApply =
+    hasSourceImage &&
+    imageEntries.some((entry) => entry.maskRegions.some((r) => r.checked)) &&
+    !isApplying;
+  const canDownload = showMaskedPreview && imageEntries.some((entry) => Boolean(entry.maskedImagePreviewUrl));
   const unlocatedLabels = report.maskCandidateMeta?.unlocatedLabels;
-  const numberedMaskLabels = (() => {
+  const buildNumberedLabels = (regions: RiskReportData['maskRegions']) => {
     const normalizeLabelKey = (label: string) => label.trim().toLowerCase();
     const totalByLabel = new Map<string, number>();
-    for (const region of report.maskRegions) {
+    for (const region of regions) {
       const key = normalizeLabelKey(region.label);
       totalByLabel.set(key, (totalByLabel.get(key) ?? 0) + 1);
     }
-
     const seenByLabel = new Map<string, number>();
-    return report.maskRegions.map((region) => {
+    return regions.map((region) => {
       const key = normalizeLabelKey(region.label);
       const total = totalByLabel.get(key) ?? 0;
       const seen = (seenByLabel.get(key) ?? 0) + 1;
       seenByLabel.set(key, seen);
       return total > 1 ? `${region.label}${seen}` : region.label;
     });
-  })();
+  };
 
   return (
     <section className="card">
       <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '18px', margin: '0 0 8px 0' }}>
         <IoImageOutline size={18} /> 이미지 마스킹
       </h2>
-      <div style={{ marginBottom: '12px' }}>
-        <ImagePreviewBox src={previewUrl} height={160} />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '12px' }}>
+        {imageEntries.map((entry, imageIndex) => {
+          const previewUrl =
+            showMaskedPreview && entry.maskedImagePreviewUrl
+              ? entry.maskedImagePreviewUrl
+              : entry.imagePreviewUrl;
+          const numberedMaskLabels = buildNumberedLabels(entry.maskRegions);
+          return (
+            <div key={`mask-image-${imageIndex}`} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <ImagePreviewBox src={previewUrl} height={160} />
+              {entry.maskRegions.length > 0 && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  {entry.maskRegions.map((mask, index) => (
+                    <label
+                      key={mask.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '8px',
+                        background: mask.checked ? '#eff6ff' : '#f8fafc',
+                        border: `1px solid ${mask.checked ? '#3b82f6' : '#e2e8f0'}`,
+                        borderRadius: '12px',
+                        cursor: hasSourceImage ? 'pointer' : 'not-allowed',
+                        fontSize: '13px',
+                        fontWeight: 500,
+                        color: mask.checked ? '#1d4ed8' : '#64748b',
+                        opacity: hasSourceImage ? 1 : 0.6,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        style={{ marginRight: '8px' }}
+                        checked={mask.checked}
+                        disabled={!hasSourceImage}
+                        onChange={() => onToggleMask(imageIndex, mask.id)}
+                      />
+                      {numberedMaskLabels[index]}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
       {isApplying && (
         <p className="muted" style={{ fontSize: '12px', margin: '0 0 12px 0' }}>
@@ -81,7 +132,7 @@ export function ImageMaskingPanel({
           분석에 사용한 원본 이미지가 없어 마스킹을 적용할 수 없습니다.
         </p>
       )}
-      {report.maskRegions.length === 0 && hasSourceImage && (
+      {imageEntries.every((entry) => entry.maskRegions.length === 0) && hasSourceImage && (
         <p style={{ fontSize: '13px', color: '#b45309', margin: '0 0 12px 0', lineHeight: 1.5 }}>
           마스킹할 bbox가 있는 항목이 없습니다. Gemma imageRisks에 bbox가 포함돼야 체크박스가
           생깁니다. LLM 원문을 확인하세요.
@@ -102,37 +153,6 @@ export function ImageMaskingPanel({
             {isRetryingBbox ? 'bbox 재탐지 중...' : 'bbox 다시 찾기'}
           </button>
         </>
-      )}
-      {report.maskRegions.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
-          {report.maskRegions.map((mask, index) => (
-            <label
-              key={mask.id}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                padding: '8px',
-                background: mask.checked ? '#eff6ff' : '#f8fafc',
-                border: `1px solid ${mask.checked ? '#3b82f6' : '#e2e8f0'}`,
-                borderRadius: '12px',
-                cursor: hasSourceImage ? 'pointer' : 'not-allowed',
-                fontSize: '13px',
-                fontWeight: 500,
-                color: mask.checked ? '#1d4ed8' : '#64748b',
-                opacity: hasSourceImage ? 1 : 0.6,
-              }}
-            >
-              <input
-                type="checkbox"
-                style={{ marginRight: '8px' }}
-                checked={mask.checked}
-                disabled={!hasSourceImage}
-                onChange={() => onToggleMask(mask.id)}
-              />
-              {numberedMaskLabels[index]}
-            </label>
-          ))}
-        </div>
       )}
       {maskError && (
         <p style={{ color: '#dc2626', fontSize: '13px', margin: '0 0 12px 0' }}>{maskError}</p>
