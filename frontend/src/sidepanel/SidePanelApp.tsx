@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { API_BASE_URL, DEFAULT_SERVER_LLM_CHAT_URL, DEFAULT_SERVER_LLM_MODEL } from '../config/models';
+import {
+  API_BASE_URL,
+  DEFAULT_SERVER_LLM_CHAT_URL,
+  DEFAULT_SERVER_LLM_MODEL,
+  MASK_DEFAULT_STYLE,
+} from '../config/models';
+import type { MaskRenderStyle } from '../shared/maskRenderStyle';
 import * as api from '../services/apiClient';
 import { mapHistoryToItem, mapRecordToReport } from '../services/analysisMapper';
 import { detectMaskRegionsForRisks, type RiskDetectionHit } from '../services/imageDetectService';
@@ -161,6 +167,7 @@ export function SidePanelApp() {
   const [isMaskApplying, setIsMaskApplying] = useState(false);
   const [isRetryingBbox, setIsRetryingBbox] = useState(false);
   const [maskPreviewApplied, setMaskPreviewApplied] = useState(false);
+  const [maskRenderStyle, setMaskRenderStyle] = useState<MaskRenderStyle>(MASK_DEFAULT_STYLE);
 
   const [files, setFiles] = useState<File[]>([]);
 
@@ -846,7 +853,7 @@ export function SidePanelApp() {
           nextEntries.push(entry);
           continue;
         }
-        const blob = await applyMasksToFile(file, entry.maskRegions);
+        const blob = await applyMasksToFile(file, entry.maskRegions, { style: maskRenderStyle });
         const url = URL.createObjectURL(blob);
         nextEntries.push({
           ...entry,
@@ -1151,7 +1158,9 @@ export function SidePanelApp() {
             {viewMode === 'image-masking' && (
               <ImageMaskingPanel
                 report={report}
-                hasSourceImage={Boolean(analysisImageFileRef.current)}
+                hasSourceImage={files.length > 0 || Boolean(analysisImageFileRef.current)}
+                maskRenderStyle={maskRenderStyle}
+                onMaskRenderStyleChange={setMaskRenderStyle}
                 showMaskedPreview={maskPreviewApplied}
                 isApplying={isMaskApplying}
                 maskError={maskError}

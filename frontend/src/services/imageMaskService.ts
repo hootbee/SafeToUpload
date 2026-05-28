@@ -300,6 +300,30 @@ function blockPixelateImageData(
   }
 }
 
+/** 다운스케일 후 nearest-neighbor 업스케일 — 깔끔한 모자이크 */
+function applyMosaicRectOnMainCanvas(
+  ctx: CanvasRenderingContext2D,
+  ix: number,
+  iy: number,
+  iw: number,
+  ih: number,
+  cellPx: number,
+) {
+  const cell = Math.max(4, Math.min(cellPx, Math.floor(Math.min(iw, ih) / 2)));
+  const cols = Math.max(1, Math.round(iw / cell));
+  const rows = Math.max(1, Math.round(ih / cell));
+  const small = document.createElement('canvas');
+  small.width = cols;
+  small.height = rows;
+  const sctx = small.getContext('2d');
+  if (!sctx) return;
+  sctx.drawImage(ctx.canvas, ix, iy, iw, ih, 0, 0, cols, rows);
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(small, 0, 0, cols, rows, ix, iy, iw, ih);
+  ctx.restore();
+}
+
 function obliterateRectOnMainCanvas(
   ctx: CanvasRenderingContext2D,
   ix: number,
@@ -362,6 +386,7 @@ export async function applyMasksToFile(
   }
 
   const render = resolveMaskRenderParams(options);
+  const useMosaic = render.style === 'mosaic';
   const featherRatio = Math.max(0.06, render.featherPx / 400);
 
   const loaded = await loadImageFromFile(file);
@@ -386,18 +411,22 @@ export async function applyMasksToFile(
     const rect = bboxToPixelRect(region.bbox, width, height, padRatio);
     if (!rect) continue;
 
-    const expanded = expandPixelRect(rect, width, height, featherRatio);
-    obliterateRectOnMainCanvas(
-      ctx,
-      expanded.x,
-      expanded.y,
-      expanded.w,
-      expanded.h,
-      render.blurRadius,
-      render.blurPasses,
-      render.pixelateMaxPx,
-      render.pixelateRounds,
-    );
+    if (useMosaic) {
+      applyMosaicRectOnMainCanvas(ctx, rect.x, rect.y, rect.w, rect.h, render.mosaicCellPx);
+    } else {
+      const expanded = expandPixelRect(rect, width, height, featherRatio);
+      obliterateRectOnMainCanvas(
+        ctx,
+        expanded.x,
+        expanded.y,
+        expanded.w,
+        expanded.h,
+        render.blurRadius,
+        render.blurPasses,
+        render.pixelateMaxPx,
+        render.pixelateRounds,
+      );
+    }
     applied += 1;
   }
 
@@ -405,7 +434,7 @@ export async function applyMasksToFile(
     throw new Error('유효한 마스킹 영역이 없습니다. bbox를 확인하세요.');
   }
 
-  if (render.overlayOpacity > 0) {
+  if (!useMosaic && render.overlayOpacity > 0) {
     for (const region of selected) {
       const rect = bboxToPixelRect(region.bbox, width, height, padRatio);
       if (!rect) continue;

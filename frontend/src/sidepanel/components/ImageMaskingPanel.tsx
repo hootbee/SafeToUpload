@@ -1,3 +1,5 @@
+import type { MaskRenderStyle } from '../../shared/maskRenderStyle';
+import { MASK_RENDER_STYLE_LABEL } from '../../shared/maskRenderStyle';
 import type { RiskReportData } from '../../shared/types';
 import { IoImageOutline } from 'react-icons/io5';
 import { ImagePreviewBox } from './ImagePreviewBox';
@@ -5,6 +7,8 @@ import { ImagePreviewBox } from './ImagePreviewBox';
 interface Props {
   report: RiskReportData;
   hasSourceImage: boolean;
+  maskRenderStyle: MaskRenderStyle;
+  onMaskRenderStyleChange: (style: MaskRenderStyle) => void;
   /** true이면 마스킹 적용 후 결과 미리보기 */
   showMaskedPreview: boolean;
   isApplying: boolean;
@@ -23,6 +27,8 @@ export function ImageMaskingPanel({
   isApplying,
   maskError,
   isRetryingBbox,
+  maskRenderStyle,
+  onMaskRenderStyleChange,
   onToggleMask,
   onApplyMask,
   onDownload,
@@ -67,6 +73,37 @@ export function ImageMaskingPanel({
       <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '18px', margin: '0 0 8px 0' }}>
         <IoImageOutline size={18} /> 이미지 마스킹
       </h2>
+      <div style={{ marginBottom: '12px' }}>
+        <p className="muted" style={{ fontSize: '12px', margin: '0 0 8px 0' }}>
+          마스킹 방식
+        </p>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          {(['legacy', 'mosaic'] as const).map((style) => {
+            const selected = maskRenderStyle === style;
+            return (
+              <button
+                key={style}
+                type="button"
+                className="btn"
+                disabled={isApplying}
+                onClick={() => onMaskRenderStyleChange(style)}
+                style={{
+                  flex: 1,
+                  padding: '10px 8px',
+                  fontSize: '13px',
+                  fontWeight: selected ? 700 : 500,
+                  borderRadius: '12px',
+                  border: `1px solid ${selected ? '#3b82f6' : '#e2e8f0'}`,
+                  background: selected ? '#eff6ff' : '#f8fafc',
+                  color: selected ? '#1d4ed8' : '#64748b',
+                }}
+              >
+                {MASK_RENDER_STYLE_LABEL[style]}
+              </button>
+            );
+          })}
+        </div>
+      </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '12px' }}>
         {imageEntries.map((entry, imageIndex) => {
           const previewUrl =

@@ -36,3 +36,10 @@ export const MASK_PADDING_RATIO = Number(import.meta.env.VITE_MASK_PADDING_RATIO
 export const MASK_FEATHER_PX = Number(import.meta.env.VITE_MASK_FEATHER_PX ?? 28);
 /** 0 = 블러만 적용 (회색·단색 박스 없음) */
 export const MASK_OVERLAY_OPACITY = Number(import.meta.env.VITE_MASK_OVERLAY_OPACITY ?? 0);
+
+/** 마스킹 기본 방식: legacy(블러·픽셀) | mosaic */
+export const MASK_DEFAULT_STYLE =
+  import.meta.env.VITE_MASK_DEFAULT_STYLE === 'mosaic' ? 'mosaic' : 'legacy';
+
+/** 모자이크 한 칸 크기(px, 대략) */
+export const MASK_MOSAIC_CELL_PX = Number(import.meta.env.VITE_MASK_MOSAIC_CELL_PX ?? 12);

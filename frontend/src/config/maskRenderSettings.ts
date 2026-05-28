@@ -1,22 +1,27 @@
 import {
   MASK_BLUR_PASSES,
   MASK_BLUR_RADIUS,
+  MASK_DEFAULT_STYLE,
   MASK_FEATHER_PX,
+  MASK_MOSAIC_CELL_PX,
   MASK_OVERLAY_OPACITY,
   MASK_PADDING_RATIO,
   MASK_PIXELATE_MAX_PX,
   MASK_PIXELATE_ROUNDS,
 } from './models';
+import type { MaskRenderStyle } from '../shared/maskRenderStyle';
 
 /** Chrome Canvas filter blur는 반경이 커져도 효과가 포화됩니다. */
 export const CANVAS_BLUR_RADIUS_CAP = 64;
 
 export interface MaskRenderParams {
+  style: MaskRenderStyle;
   blurRadius: number;
   blurPasses: number;
   pixelateMaxPx: number;
   pixelateRounds: number;
   featherPx: number;
+  mosaicCellPx: number;
   /** bbox width/height 대비 확장 (0.05 = 5%) */
   paddingRatio: number;
   overlayOpacity: number;
@@ -26,10 +31,12 @@ export interface MaskRenderParams {
 }
 
 export interface MaskRenderOptions {
+  style?: MaskRenderStyle;
   blurRadius?: number;
   blurPasses?: number;
   pixelateMaxPx?: number;
   pixelateRounds?: number;
+  mosaicCellPx?: number;
   overlayOpacity?: number;
   paddingRatio?: number;
 }
@@ -43,18 +50,23 @@ export function resolveMaskRenderParams(options?: MaskRenderOptions): MaskRender
   const overlayOpacity = options?.overlayOpacity ?? MASK_OVERLAY_OPACITY;
   const paddingRatio = Math.max(0, options?.paddingRatio ?? MASK_PADDING_RATIO);
 
+  const style: MaskRenderStyle =
+    options?.style === 'mosaic' || options?.style === 'legacy' ? options.style : MASK_DEFAULT_STYLE;
+
   const cappedBlur = Math.min(Math.max(1, envBlurRadius), CANVAS_BLUR_RADIUS_CAP);
-  const blurPasses = Math.max(
-    1,
-    Math.ceil(envBlurPasses * (envBlurRadius / cappedBlur)),
-  );
+  const blurPasses =
+    envBlurPasses <= 0
+      ? 0
+      : Math.max(1, Math.ceil(envBlurPasses * (envBlurRadius / cappedBlur)));
 
   return {
+    style,
     blurRadius: cappedBlur,
     blurPasses,
     pixelateMaxPx: Math.max(1, pixelateMaxPx),
     pixelateRounds: Math.max(1, pixelateRounds),
     featherPx: MASK_FEATHER_PX,
+    mosaicCellPx: Math.max(4, options?.mosaicCellPx ?? MASK_MOSAIC_CELL_PX),
     paddingRatio,
     overlayOpacity: Math.max(0, Math.min(1, overlayOpacity)),
     envBlurRadius,
