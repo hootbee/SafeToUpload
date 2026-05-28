@@ -55,6 +55,7 @@ import { RiskReport } from './components/RiskReport';
 import { SettingsPanel } from './components/SettingsPanel';
 import { TextInputCard } from './components/TextInputCard';
 import { TbArrowLeft } from 'react-icons/tb';
+import { RiRobot2Line } from "react-icons/ri";
 
 const hasChromeRuntime = typeof chrome !== 'undefined' && !!chrome.runtime;
 
@@ -464,7 +465,6 @@ export function SidePanelApp() {
       setReport(stored.report);
       setMaskPreviewApplied(false);
       setViewMode('report');
-      setTab('home');
       return;
     }
 
@@ -485,7 +485,6 @@ export function SidePanelApp() {
       setReport(result);
       setMaskPreviewApplied(false);
       setViewMode('report');
-      setTab('home');
     } catch (error) {
       setAnalysisError((error as Error).message || '분석 결과를 불러오지 못했습니다.');
     }
@@ -688,7 +687,7 @@ export function SidePanelApp() {
       : primary.summary;
 
     const mergedImageRiskSummary = hasMultiImage
-      ? `총 ${reports.length}장 분석 기준: ${primary.report.imageRiskSummary}`
+      ? `- 총 ${reports.length}장 분석 기준\n${primary.report.imageRiskSummary}`
       : primary.report.imageRiskSummary;
 
     const mergedEscalations = Array.from(
@@ -998,12 +997,17 @@ export function SidePanelApp() {
     if (viewMode === 'image-masking' || viewMode === 'rewrite') {
       setViewMode('report');
     } else if (viewMode === 'report') {
-      setViewMode('home');
+      if (isHistoryView) {
+        setTab('history');
+        setViewMode('home'); 
+      } else {
+        setViewMode('home');
+      }
     }
   };
 
   const showBackButton =
-    tab === 'home' && (viewMode === 'report' || viewMode === 'rewrite' || viewMode === 'image-masking');
+    viewMode === 'report' || viewMode === 'rewrite' || viewMode === 'image-masking';
 
   if (!onboardingDone) {
     return (
@@ -1059,7 +1063,7 @@ export function SidePanelApp() {
 
       <main className="panel-content">
         <div className="panel-scroll-fill">
-        {tab === 'home' && (
+        {tab === 'home' && viewMode !== 'report' && viewMode !== 'rewrite' && viewMode !== 'image-masking' && (
           <>
             {viewMode === 'home' && (
               <>
@@ -1085,7 +1089,10 @@ export function SidePanelApp() {
                   />
                 ) : (
                   <section className="card model-banner">
-                    <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700 }}>서버 AI 모드 (Gemma4 26B)</h3>
+                    <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <RiRobot2Line size={18} />
+                      서버 AI 모드 (Gemma4 26B)
+                    </h3>
                     <p className="muted" style={{ marginBottom: 0 }}>
                       Nest API → Chat Completions ({settings.serverLlm.model}). URL·API 키는 설정 탭에서
                       변경할 수 있습니다.
@@ -1126,7 +1133,12 @@ export function SidePanelApp() {
               />
             )}
 
-            {viewMode === 'report' && report && (
+          </>
+        )}
+
+        {(viewMode === 'report' || viewMode === 'rewrite' || viewMode === 'image-masking') && report && (
+          <>
+            {viewMode === 'report' && (
               <RiskReport
                 report={report}
                 isHistoryView={isHistoryView}
@@ -1135,9 +1147,8 @@ export function SidePanelApp() {
                 onOpenImageMasking={openImageMasking}
               />
             )}
-
-            {viewMode === 'rewrite' && report && <RewriteSuggestion report={report} />}
-            {viewMode === 'image-masking' && report && (
+            {viewMode === 'rewrite' && <RewriteSuggestion report={report} />}
+            {viewMode === 'image-masking' && (
               <ImageMaskingPanel
                 report={report}
                 hasSourceImage={Boolean(analysisImageFileRef.current)}
@@ -1154,7 +1165,7 @@ export function SidePanelApp() {
           </>
         )}
 
-        {tab === 'history' && (
+        {tab === 'history' && viewMode !== 'report' && viewMode !== 'rewrite' && viewMode !== 'image-masking' && (
           <HistoryList
             items={filteredHistory}
             filter={historyFilter}
@@ -1163,7 +1174,7 @@ export function SidePanelApp() {
           />
         )}
 
-        {tab === 'settings' && (
+        {tab === 'settings' && viewMode !== 'report' && viewMode !== 'rewrite' && viewMode !== 'image-masking' && (
           <SettingsPanel
             settings={settings}
             onInferenceMode={handleInferenceModeChange}
@@ -1233,7 +1244,12 @@ export function SidePanelApp() {
         </div>
       </main>
 
-      <BottomTabNav current={tab} onChange={setTab} />
+      <BottomTabNav current={tab} onChange={(newTab) => {
+        setTab(newTab);
+        if (viewMode === 'report' || viewMode === 'rewrite' || viewMode === 'image-masking') {
+          setViewMode('home');
+        }
+      }} />
 
       {selectedRiskId && report && (
         <ConfirmDialog2
