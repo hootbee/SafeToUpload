@@ -4,7 +4,10 @@ const STORAGE_KEY = 'safeToUploadAnalysisHistory:v1';
 const MAX_ENTRIES = 50;
 
 /** blob URL은 저장하지 않음 (재시작 후 무효) */
-export type StoredRiskReport = Omit<RiskReportData, 'imagePreviewUrl' | 'maskedImagePreviewUrl'>;
+export type StoredRiskReport = Omit<
+  RiskReportData,
+  'imagePreviewUrl' | 'imagePreviewUrls' | 'maskedImagePreviewUrl' | 'imageEntries'
+>;
 
 export interface StoredAnalysisEntry {
   id: string;
@@ -21,7 +24,13 @@ interface StoragePayload {
 }
 
 function stripReportForStorage(report: RiskReportData): StoredRiskReport {
-  const { imagePreviewUrl: _p, maskedImagePreviewUrl: _m, ...rest } = report;
+  const {
+    imagePreviewUrl: _p,
+    imagePreviewUrls: _ps,
+    maskedImagePreviewUrl: _m,
+    imageEntries: _entries,
+    ...rest
+  } = report;
   return rest;
 }
 
