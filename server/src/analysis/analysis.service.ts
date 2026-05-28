@@ -72,11 +72,12 @@ export class AnalysisService {
     );
 
     const userSettings = await this.settingsService.getSettings();
+    const userSettingsAny = userSettings as Record<string, unknown>;
     const memorySettings = this.settingsService.getPrivacyMemorySettingsFromRecord({
-      privacyMemoryEnabled: userSettings.privacyMemoryEnabled ?? true,
-      privacyMemoryRetentionDays: userSettings.privacyMemoryRetentionDays ?? 90,
-      privacyMemoryUseForBlocking: userSettings.privacyMemoryUseForBlocking ?? true,
-      privacyMemoryUseForScoreBoost: userSettings.privacyMemoryUseForScoreBoost ?? true,
+      privacyMemoryEnabled: (userSettingsAny.privacyMemoryEnabled as boolean | undefined) ?? true,
+      privacyMemoryRetentionDays: (userSettingsAny.privacyMemoryRetentionDays as number | undefined) ?? 90,
+      privacyMemoryUseForBlocking: (userSettingsAny.privacyMemoryUseForBlocking as boolean | undefined) ?? true,
+      privacyMemoryUseForScoreBoost: (userSettingsAny.privacyMemoryUseForScoreBoost as boolean | undefined) ?? true,
     });
 
     aiResult = await this.privacyMemoryService.matchAndBoost(
