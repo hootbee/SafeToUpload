@@ -30,3 +30,8 @@ server/.nestjs-cli.json
 coverage/
 .tmp/
 tmp/
+
+# Shared package build artifacts (keep source-only in shared/*)
+shared/**/*.js
+shared/**/*.d.ts
+shared/**/*.js.map

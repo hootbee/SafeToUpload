@@ -14,7 +14,8 @@ export const DEFAULT_SERVER_LLM_CHAT_URL =
 export const DEFAULT_SERVER_LLM_MODEL =
   import.meta.env.VITE_SERVER_LLM_MODEL || SERVER_MODEL_ID;
 
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3270';
+export const API_BASE_URL =
+  (import.meta.env.VITE_API_BASE_URL || 'http://175.202.101.219:3270').replace(/\/$/, '');
 
 /** 게이트 모델·rate limit 시 Hugging Face Read 토큰 (선택) */
 export const HF_TOKEN = import.meta.env.VITE_HF_TOKEN || '';

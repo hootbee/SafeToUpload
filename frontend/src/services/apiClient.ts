@@ -22,7 +22,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   } catch (error) {
     const reason = (error as Error).message || 'network error';
     throw new Error(
-      `백엔드에 연결할 수 없습니다 (${reason}). API: ${API_BASE_URL} — server에서 npm run start:dev 실행 및 manifest host_permissions를 확인하세요.`,
+      `백엔드에 연결할 수 없습니다 (${reason}). API: ${API_BASE_URL} — 서버 주소/방화벽/CORS 및 manifest host_permissions를 확인하세요.`,
     );
   }
 

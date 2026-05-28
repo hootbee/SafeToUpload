@@ -68,7 +68,7 @@ const createStagesFromTitles = (titles: string[]): AnalysisStage[] =>
   }));
 
 const defaultSettings = (): SettingsState => ({
-  inferenceMode: 'local',
+  inferenceMode: 'server',
   platforms: { instagram: true, x: true, facebook: true, other: false },
   sensitivity: 6,
   retentionDays: 30,
@@ -276,7 +276,7 @@ export function SidePanelApp() {
         const remote = await api.fetchSettings();
         setSettings(
           mergeSettings({
-            inferenceMode: (remote.inferenceMode as InferenceMode) ?? 'local',
+            inferenceMode: 'server',
             platforms: {
               instagram: remote.targetPlatforms.includes('instagram'),
               x: remote.targetPlatforms.includes('x'),
@@ -792,12 +792,11 @@ export function SidePanelApp() {
   };
 
   const handleInferenceModeChange = (mode: InferenceMode) => {
-    const next = { ...settings, inferenceMode: mode };
+    const next = { ...settings, inferenceMode: 'server' as InferenceMode };
     setSettings(next);
     void persistSettings(next);
-    if (mode === 'local' && modelStatus !== 'ready') {
-      setModelStatus('not-loaded');
-      setModelProgress(0);
+    if (mode === 'local') {
+      setAnalysisError('이 브랜치는 서버 전용 연결 모드입니다. 추론 모드는 server로 고정됩니다.');
     }
   };
 
