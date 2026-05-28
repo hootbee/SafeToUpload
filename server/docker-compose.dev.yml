@@ -14,7 +14,8 @@ services:
 
   api-dev:
     build:
-      context: .
+      context: ..
+      dockerfile: server/Dockerfile
       target: dev
     container_name: privacy_check_api_dev
     command: npm run start:dev

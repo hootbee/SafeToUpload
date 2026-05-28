@@ -14,7 +14,8 @@ services:
 
   api:
     build:
-      context: .
+      context: ..
+      dockerfile: server/Dockerfile
       target: prod
     container_name: privacy_check_api
     restart: unless-stopped
