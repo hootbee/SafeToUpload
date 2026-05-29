@@ -14,8 +14,12 @@ import {
   applyMasksToFile,
   buildDynamicImageRiskSummary,
   buildMaskRegionsFromRisks,
+  createUserMaskRegion,
   imageRiskRegionIds,
   prepareImageRisksItems,
+  reportHasUserManualMaskRegions,
+  revokeMaskedPreviewUrls,
+  stripUserManualMaskRegions,
   suggestedMaskedFileName,
 } from '../services/imageMaskService';
 import { applyPlatformAutoToggle, detectPlatformFromUrl } from '../services/platformDetect';
@@ -42,6 +46,7 @@ import type {
   InferenceMode,
   Platform,
   RiskLevel,
+  NormalizedBbox,
   RiskReportData,
   SettingsState,
   TabKey,
@@ -167,6 +172,7 @@ export function SidePanelApp() {
   const [isMaskApplying, setIsMaskApplying] = useState(false);
   const [isRetryingBbox, setIsRetryingBbox] = useState(false);
   const [maskPreviewApplied, setMaskPreviewApplied] = useState(false);
+  const [manualMaskEditActive, setManualMaskEditActive] = useState(false);
   const [maskRenderStyle, setMaskRenderStyle] = useState<MaskRenderStyle>(MASK_DEFAULT_STYLE);
 
   const [files, setFiles] = useState<File[]>([]);
@@ -498,6 +504,14 @@ export function SidePanelApp() {
   }, []);
 
   const openImageMasking = () => {
+    setManualMaskEditActive(false);
+    setMaskError('');
+    setReport((prev) => {
+      if (!prev || !reportHasUserManualMaskRegions(prev)) return prev;
+      revokeMaskedPreviewUrls(prev);
+      maskedImagePreviewUrlRef.current = null;
+      return stripUserManualMaskRegions(prev);
+    });
     setMaskPreviewApplied(false);
     setViewMode('image-masking');
   };
@@ -790,6 +804,96 @@ export function SidePanelApp() {
     setShowDeleteDialog(false);
   };
 
+  const getMaskTargetFiles = () =>
+    files.length > 0 ? files : analysisImageFileRef.current ? [analysisImageFileRef.current] : [];
+
+  const getImageEntriesFromReport = (data: RiskReportData) =>
+    data.imageEntries && data.imageEntries.length > 0
+      ? data.imageEntries
+      : [
+          {
+            imageName: getMaskTargetFiles()[0]?.name,
+            imagePreviewUrl: data.imagePreviewUrl,
+            maskedImagePreviewUrl: data.maskedImagePreviewUrl,
+            imageRiskSummary: data.imageRiskSummary,
+            maskRegions: data.maskRegions,
+          },
+        ];
+
+  const applyMaskEntriesToFiles = async (
+    entries: NonNullable<RiskReportData['imageEntries']>,
+    targetFiles: File[],
+  ): Promise<NonNullable<RiskReportData['imageEntries']>> => {
+    const nextEntries: NonNullable<RiskReportData['imageEntries']> = [];
+    for (let index = 0; index < entries.length; index += 1) {
+      const entry = entries[index];
+      const file = targetFiles[index];
+      if (!file || !entry.maskRegions.some((r) => r.checked)) {
+        nextEntries.push(entry);
+        continue;
+      }
+      const blob = await applyMasksToFile(file, entry.maskRegions, { style: maskRenderStyle });
+      const url = URL.createObjectURL(blob);
+      nextEntries.push({
+        ...entry,
+        maskedImagePreviewUrl: url,
+      });
+    }
+    return nextEntries;
+  };
+
+  const commitMaskEntries = (nextEntries: NonNullable<RiskReportData['imageEntries']>) => {
+    revokeMaskedPreviewUrl();
+    maskedImagePreviewUrlRef.current = nextEntries[0]?.maskedImagePreviewUrl ?? null;
+    setReport((prev) =>
+      prev
+        ? {
+            ...prev,
+            maskedImagePreviewUrl: nextEntries[0]?.maskedImagePreviewUrl,
+            imageEntries: nextEntries,
+            maskRegions: nextEntries[0]?.maskRegions ?? prev.maskRegions,
+          }
+        : prev,
+    );
+    setMaskPreviewApplied(true);
+  };
+
+  const addManualMaskRegion = async (imageIndex: number, bbox: NormalizedBbox) => {
+    if (!report) return;
+    const targetFiles = getMaskTargetFiles();
+    if (targetFiles.length === 0) {
+      setMaskError('마스킹할 원본 이미지가 없습니다.');
+      return;
+    }
+
+    const region = createUserMaskRegion(bbox);
+    const entries = getImageEntriesFromReport(report);
+    const nextEntries = entries.map((entry, idx) =>
+      idx !== imageIndex ? entry : { ...entry, maskRegions: [...entry.maskRegions, region] },
+    );
+
+    setMaskError('');
+    setReport((prev) =>
+      prev
+        ? {
+            ...prev,
+            imageEntries: nextEntries,
+            maskRegions: nextEntries[0]?.maskRegions ?? prev.maskRegions,
+          }
+        : prev,
+    );
+
+    setIsMaskApplying(true);
+    try {
+      const applied = await applyMaskEntriesToFiles(nextEntries, targetFiles);
+      commitMaskEntries(applied);
+    } catch (error) {
+      setMaskError((error as Error).message);
+    } finally {
+      setIsMaskApplying(false);
+    }
+  };
+
   const toggleMask = (imageIndex: number, id: string) => {
     setMaskError('');
     setReport((prev) => {
@@ -819,23 +923,12 @@ export function SidePanelApp() {
       setMaskError('마스킹할 원본 이미지가 없습니다. 이미지를 첨부한 뒤 다시 분석해 주세요.');
       return;
     }
-    const targetFiles = files.length > 0 ? files : analysisImageFileRef.current ? [analysisImageFileRef.current] : [];
+    const targetFiles = getMaskTargetFiles();
     if (targetFiles.length === 0) {
       setMaskError('마스킹할 원본 이미지가 없습니다. 이미지를 첨부한 뒤 다시 분석해 주세요.');
       return;
     }
-    const entries =
-      report.imageEntries && report.imageEntries.length > 0
-        ? report.imageEntries
-        : [
-            {
-              imageName: targetFiles[0]?.name,
-              imagePreviewUrl: report.imagePreviewUrl,
-              maskedImagePreviewUrl: report.maskedImagePreviewUrl,
-              imageRiskSummary: report.imageRiskSummary,
-              maskRegions: report.maskRegions,
-            },
-          ];
+    const entries = getImageEntriesFromReport(report);
 
     if (!entries.some((entry) => entry.maskRegions.some((r) => r.checked))) {
       setMaskError('마스킹할 항목을 하나 이상 선택하세요.');
@@ -845,33 +938,8 @@ export function SidePanelApp() {
     setIsMaskApplying(true);
     setMaskError('');
     try {
-      const nextEntries: NonNullable<RiskReportData['imageEntries']> = [];
-      for (let index = 0; index < entries.length; index += 1) {
-        const entry = entries[index];
-        const file = targetFiles[index];
-        if (!file) {
-          nextEntries.push(entry);
-          continue;
-        }
-        const blob = await applyMasksToFile(file, entry.maskRegions, { style: maskRenderStyle });
-        const url = URL.createObjectURL(blob);
-        nextEntries.push({
-          ...entry,
-          maskedImagePreviewUrl: url,
-        });
-      }
-      revokeMaskedPreviewUrl();
-      maskedImagePreviewUrlRef.current = nextEntries[0]?.maskedImagePreviewUrl ?? null;
-      setReport((prev) =>
-        prev
-          ? {
-              ...prev,
-              maskedImagePreviewUrl: nextEntries[0]?.maskedImagePreviewUrl,
-              imageEntries: nextEntries,
-            }
-          : prev,
-      );
-      setMaskPreviewApplied(true);
+      const nextEntries = await applyMaskEntriesToFiles(entries, targetFiles);
+      commitMaskEntries(nextEntries);
     } catch (error) {
       setMaskError((error as Error).message);
     } finally {
@@ -1162,6 +1230,12 @@ export function SidePanelApp() {
                 maskRenderStyle={maskRenderStyle}
                 onMaskRenderStyleChange={setMaskRenderStyle}
                 showMaskedPreview={maskPreviewApplied}
+                manualEditActive={manualMaskEditActive}
+                onManualEditToggle={() => {
+                  setMaskError('');
+                  setManualMaskEditActive((prev) => !prev);
+                }}
+                onAddManualRegion={(imageIndex, bbox) => void addManualMaskRegion(imageIndex, bbox)}
                 isApplying={isMaskApplying}
                 maskError={maskError}
                 isRetryingBbox={isRetryingBbox}

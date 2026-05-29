@@ -172,7 +172,6 @@ export function RiskReport({
                     <ImagePreviewBox
                       src={entry.imagePreviewUrl}
                       alt={entry.imageName ?? `업로드 이미지 ${idx + 1}`}
-                      height={140}
                     />
                     <p className="muted" style={{ fontSize: '12px', margin: 0 }}>
                       {idx + 1}. {entry.imageName ?? `이미지 ${idx + 1}`} <br />· 마스킹 후보: {labels}
@@ -183,7 +182,7 @@ export function RiskReport({
             </div>
           ) : !isHistoryView ? (
             <div style={{ marginBottom: '12px' }}>
-              <ImagePreviewBox src={report.imagePreviewUrl} height={140} />
+              <ImagePreviewBox src={report.imagePreviewUrl} />
             </div>
           ) : null}
           <p className="muted" style={{ fontSize: '14px', margin: 0, marginBottom: isHistoryView ? 0 : '5px', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>

@@ -7,6 +7,7 @@ import type {
   MaskRegionSource,
   MaskTraceEntry,
   NormalizedBbox,
+  RiskReportData,
 } from '../shared/types';
 import type { RiskDetectionHit } from './imageDetectService';
 import {
@@ -57,6 +58,52 @@ function snapshotGemmaRisks(ai: AiAnalysisResponse): MaskTraceEntry[] {
 
 export function riskRegionId(type: string, index: number) {
   return `mask-${type.replace(/[^a-zA-Z0-9_]+/g, '_')}-${index}`;
+}
+
+/** 사용자가 직접 그린 마스킹 영역 */
+export function createUserMaskRegion(bbox: NormalizedBbox): MaskRegion {
+  return {
+    id: `user-manual-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    riskType: 'user_manual',
+    label: '사용자 지정',
+    bbox: sanitizeMaskBbox(bbox),
+    checked: true,
+    source: 'user',
+  };
+}
+
+export function reportHasUserManualMaskRegions(report: RiskReportData): boolean {
+  if (report.maskRegions.some((r) => r.source === 'user')) return true;
+  return (report.imageEntries ?? []).some((entry) => entry.maskRegions.some((r) => r.source === 'user'));
+}
+
+/** blob 마스킹 미리보기 URL 해제 */
+export function revokeMaskedPreviewUrls(report: RiskReportData): void {
+  const revoke = (url?: string) => {
+    if (url?.startsWith('blob:')) URL.revokeObjectURL(url);
+  };
+  revoke(report.maskedImagePreviewUrl);
+  for (const entry of report.imageEntries ?? []) {
+    revoke(entry.maskedImagePreviewUrl);
+  }
+}
+
+/** 직접 수정(source: user) 영역·미리보기 제거 */
+export function stripUserManualMaskRegions(report: RiskReportData): RiskReportData {
+  const keepAutoRegions = (regions: MaskRegion[]) => regions.filter((r) => r.source !== 'user');
+
+  const imageEntries = report.imageEntries?.map((entry) => ({
+    ...entry,
+    maskRegions: keepAutoRegions(entry.maskRegions),
+    maskedImagePreviewUrl: undefined,
+  }));
+
+  return {
+    ...report,
+    maskRegions: keepAutoRegions(report.maskRegions),
+    imageEntries,
+    maskedImagePreviewUrl: undefined,
+  };
 }
 
 /** Gemma imageRisks 그대로 사용 (항목 추가·삭제·타입 변환 없음) */

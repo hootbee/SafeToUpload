@@ -35,12 +35,7 @@ export function ImageUploadBox({ files, onFilesChange }: Props) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '0px' }}>
           {previewUrls.map((url, index) => (
             url && (
-              <ImagePreviewBox 
-                key={url} 
-                src={url} 
-                alt={files[index]?.name} 
-                height={140} 
-              />
+              <ImagePreviewBox key={url} src={url} alt={files[index]?.name} />
             )
           ))}
         </div>
